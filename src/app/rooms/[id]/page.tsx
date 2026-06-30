@@ -99,7 +99,9 @@ export default async function RoomPage({ params }: { params: Promise<{ id: strin
         {/* ستون سمت چپ: باکس چسبان تقویم رزرو (Booking Widget) */}
         <div className="lg:col-span-4 relative h-full">
             <BookingWidget 
+              roomId={room.roomId}
               pricePerNight={room.afterDiscount} 
+              extraPersonPrice={room.extraPersonPrice}
               baseCapacity={room.personCapacity}
               maxExtraCapacity={room.extraPersonCapacity}
             />

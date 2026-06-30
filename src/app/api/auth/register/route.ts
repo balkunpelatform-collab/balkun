@@ -1,8 +1,7 @@
-// مسیر مقصد این فایل: src/app/api/auth/register/route.ts
-// این فایل را به‌طور کامل جایگزین فایل فعلی کنید
-
 import { NextResponse } from "next/server";
 import { supabaseAdmin } from "@/lib/supabase-admin";
+import { isOtpValid, consumeOtp } from "@/lib/otp/otpService";
+import { sendWelcomeSms } from "@/lib/sms/smsService";
 
 export async function POST(request: Request) {
   try {
@@ -12,11 +11,9 @@ export async function POST(request: Request) {
       return NextResponse.json({ success: false, error: "اطلاعات ناقص است" }, { status: 400 });
     }
 
-    // ۱. اعتبارسنجی مجدد کد تایید در سمت سرور
-    // این بررسی الزامی است تا کسی نتواند بدون طی کردن مرحله OTP،
-    // مستقیماً درخواست ثبت‌نام ارسال کند.
-    // TODO: در فاز ۷ (نوتیفیکیشن‌ها) این بخش به جدول OTP واقعی با زمان انقضا متصل می‌شود
-    if (otp !== "1234") {
+    // ۱. اعتبارسنجی مجدد کد تایید در سمت سرور (واقعی، با انقضای زمانی)
+    const otpValid = await isOtpValid(phoneNumber, otp);
+    if (!otpValid) {
       return NextResponse.json({ success: false, error: "کد تایید نامعتبر یا منقضی شده است" }, { status: 400 });
     }
 
@@ -56,6 +53,12 @@ export async function POST(request: Request) {
       .insert([{ userId: newUser.id }]);
 
     if (walletError) throw walletError;
+
+    // ۶. کد تایید را مصرف‌شده علامت می‌زنیم
+    await consumeOtp(phoneNumber, otp);
+
+    // ۷. ارسال پیامک خوش‌آمدگویی (متن متفاوت برای کاربر عادی/سازمانی)
+    await sendWelcomeSms(phoneNumber, firstName, userType);
 
     const mockToken = `balkun-token-${newUser.id}`;
 

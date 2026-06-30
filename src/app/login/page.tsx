@@ -1,4 +1,4 @@
-// مسیر مقصد این فایل: src/app/login/page.tsx
+// مسیر: src/app/login/page.tsx
 // این فایل را به‌طور کامل جایگزین فایل فعلی کنید
 
 "use client";
@@ -56,8 +56,9 @@ export default function LoginPage() {
   const handleOtpSubmit = async (e: React.FormEvent) => {
     e.preventDefault();
     setError("");
-    if (otp.length !== 4) {
-      setError("کد تایید باید ۴ رقم باشد");
+    // 🟢 اصلاح شد: کد تولیدشده در otpService.ts شش رقمی است (نه چهار رقمی)
+    if (otp.length !== 6) {
+      setError("کد تایید باید ۶ رقم باشد");
       return;
     }
 
@@ -153,7 +154,8 @@ export default function LoginPage() {
             </h1>
             <p className="text-sm font-medium text-slate-500">
               {step === "PHONE_INPUT" && "برای ادامه، شماره موبایل خود را وارد کنید."}
-              {step === "OTP_INPUT" && `کد ۴ رقمی پیامک شده به ${phoneNumber} را وارد کنید.`}
+              {/* 🟢 اصلاح شد: ۶ رقمی */}
+              {step === "OTP_INPUT" && `کد ۶ رقمی پیامک شده به ${phoneNumber} را وارد کنید.`}
               {step === "REGISTER_INFO" && "به بالکن خوش آمدید! لطفا اطلاعات خود را تکمیل کنید."}
             </p>
           </div>
@@ -196,15 +198,15 @@ export default function LoginPage() {
                 <input
                   type="text"
                   dir="ltr"
-                  placeholder="کد ۴ رقمی"
+                  placeholder="کد ۶ رقمی"
                   value={otp}
                   onChange={(e) => setOtp(e.target.value.replace(/[^0-9]/g, ''))}
-                  maxLength={4}
-                  className="w-full bg-slate-50 border border-slate-200 text-slate-900 rounded-2xl py-4 pr-12 pl-4 text-center tracking-[1em] font-black text-2xl focus:outline-none focus:ring-2 focus:ring-balkun-cyan/50 focus:border-balkun-cyan transition-all"
+                  maxLength={6}
+                  className="w-full bg-slate-50 border border-slate-200 text-slate-900 rounded-2xl py-4 pr-12 pl-4 text-center tracking-[0.5em] font-black text-2xl focus:outline-none focus:ring-2 focus:ring-balkun-cyan/50 focus:border-balkun-cyan transition-all"
                   autoFocus
                 />
               </div>
-              <button disabled={isLoading || otp.length !== 4} type="submit" className="w-full bg-balkun-orange hover:bg-balkun-orange-dark text-white rounded-2xl py-4 font-bold text-lg transition-all duration-300 shadow-lg shadow-balkun-orange/30 disabled:opacity-50 disabled:cursor-not-allowed">
+              <button disabled={isLoading || otp.length !== 6} type="submit" className="w-full bg-balkun-orange hover:bg-balkun-orange-dark text-white rounded-2xl py-4 font-bold text-lg transition-all duration-300 shadow-lg shadow-balkun-orange/30 disabled:opacity-50 disabled:cursor-not-allowed">
                 {isLoading ? <span className="animate-pulse">کمی صبر کنید...</span> : "تایید و ورود"}
               </button>
               <button type="button" onClick={() => setStep("PHONE_INPUT")} className="w-full mt-4 text-sm font-bold text-slate-500 hover:text-balkun-navy transition-colors">

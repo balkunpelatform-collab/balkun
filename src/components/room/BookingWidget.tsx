@@ -1,6 +1,7 @@
 "use client";
 
 import { useState } from "react";
+import { useRouter } from "next/navigation";
 import DatePicker, { DateObject } from "react-multi-date-picker";
 import persian from "react-date-object/calendars/persian";
 import persian_fa from "react-date-object/locales/persian_fa";
@@ -8,12 +9,22 @@ import { CalendarDays, Users, Minus, Plus } from "lucide-react";
 import { formatPrice } from "@/utils/priceCalculator";
 
 interface BookingWidgetProps {
+  roomId: string;
   pricePerNight: number;
+  extraPersonPrice: number;
   baseCapacity: number;
   maxExtraCapacity: number;
 }
 
-export default function BookingWidget({ pricePerNight, baseCapacity, maxExtraCapacity }: BookingWidgetProps) {
+export default function BookingWidget({ 
+  roomId, 
+  pricePerNight, 
+  extraPersonPrice, 
+  baseCapacity, 
+  maxExtraCapacity 
+}: BookingWidgetProps) {
+  const router = useRouter();
+  
   // مدیریت وضعیت تاریخ‌ها (بازه زمانی ورود و خروج)
   const [dates, setDates] = useState<DateObject[]>([]);
   // مدیریت تعداد مسافران
@@ -22,28 +33,27 @@ export default function BookingWidget({ pricePerNight, baseCapacity, maxExtraCap
   const maxTotalCapacity = baseCapacity + maxExtraCapacity;
 
   // محاسبه تعداد شب‌های اقامت
-  // اگر کاربر هر دو تاریخ ورود و خروج را انتخاب کرده باشد، اختلاف روزها را محاسبه می‌کنیم
   const nightsCount =
     dates.length === 2 && dates[0] && dates[1]
       ? Math.max(1, Math.round((dates[1].toUnix() - dates[0].toUnix()) / 86400))
       : 0;
 
-  // محاسبه قیمت نهایی (تعداد شب * قیمت هر شب)
-  // نکته: در فازهای بعدی که API تقویم قیمتی وصل شود، قیمت هر روزِ متمایز محاسبه می‌شود.
-  const totalPrice = nightsCount * pricePerNight;
+  // محاسبه قیمت نهایی با احتساب نفرات اضافه
+  const extraGuests = Math.max(0, guests - baseCapacity);
+  const nightlyRate = pricePerNight + (extraGuests * extraPersonPrice);
+  const totalPrice = nightsCount * nightlyRate;
 
   const handleBooking = () => {
     if (dates.length !== 2) {
       alert("لطفاً تاریخ ورود و خروج را مشخص کنید.");
       return;
     }
-    // در فاز ۵ (Booking) این بخش به صفحه پیش‌فاکتور و درگاه هدایت می‌شود
-    console.log("انتقال به مرحله پرداخت...", {
-      checkin: dates[0].format("YYYY/MM/DD"),
-      checkout: dates[1].format("YYYY/MM/DD"),
-      guests,
-      totalPrice
-    });
+    
+    // ارسال تاریخ‌ها به صورت Timestamp (ثانیه) به URL پیش‌فاکتور
+    const checkinTimestamp = dates[0].toUnix();
+    const checkoutTimestamp = dates[1].toUnix();
+
+    router.push(`/checkout/${roomId}?checkin=${checkinTimestamp}&checkout=${checkoutTimestamp}&guests=${guests}`);
   };
 
   return (
@@ -112,9 +122,9 @@ export default function BookingWidget({ pricePerNight, baseCapacity, maxExtraCap
                 </button>
               </div>
             </div>
-            {guests > baseCapacity && (
+            {extraGuests > 0 && (
               <p className="text-[10px] font-bold text-balkun-orange mt-2">
-                {guests - baseCapacity} نفر اضافه محاسبه می‌شود.
+                مبلغ {formatPrice(extraPersonPrice)} تومان بابت هر نفر اضافه اعمال می‌شود.
               </p>
             )}
           </div>
@@ -125,7 +135,7 @@ export default function BookingWidget({ pricePerNight, baseCapacity, maxExtraCap
           <div className="bg-balkun-cyan/5 rounded-2xl p-4 flex flex-col gap-2 mt-2">
             <div className="flex justify-between items-center text-sm">
               <span className="font-medium text-slate-600">
-                {formatPrice(pricePerNight)} × {nightsCount} شب
+                {formatPrice(nightlyRate)} × {nightsCount} شب
               </span>
               <span className="font-bold text-slate-700">{formatPrice(totalPrice)} تومان</span>
             </div>
@@ -141,13 +151,12 @@ export default function BookingWidget({ pricePerNight, baseCapacity, maxExtraCap
           onClick={handleBooking}
           className="w-full bg-balkun-orange hover:bg-balkun-orange-dark text-white font-black text-lg py-4 rounded-2xl shadow-lg shadow-balkun-orange/30 transition-all duration-300 transform hover:-translate-y-1 mt-2"
         >
-          {dates.length === 2 ? "درخواست رزرو" : "انتخاب تاریخ"}
+          {dates.length === 2 ? "ثبت درخواست رزرو" : "انتخاب تاریخ"}
         </button>
       </div>
 
       {/* 
         حالت موبایل: نوار ثابت پایین صفحه (Bottom Action Bar)
-        تجربه کاربری دقیقاً شبیه به اپلیکیشن‌های رزرو استاندارد
       */}
       <div className="fixed bottom-0 left-0 right-0 z-40 bg-white/95 backdrop-blur-lg border-t border-slate-200 p-4 pb-safe flex justify-between items-center md:hidden shadow-[0_-10px_20px_rgba(0,0,0,0.05)]">
         <div className="flex flex-col">
@@ -160,7 +169,6 @@ export default function BookingWidget({ pricePerNight, baseCapacity, maxExtraCap
           </div>
         </div>
         
-        {/* کلیک روی این دکمه کاربر را وادار به اسکرول به تقویم یا باز کردن مدال در فاز ۵ می‌کند */}
         <button 
           className="bg-balkun-orange text-white px-8 py-3 rounded-2xl font-black shadow-lg shadow-balkun-orange/30"
           onClick={() => window.scrollTo({ top: 0, behavior: 'smooth' })}
@@ -169,7 +177,7 @@ export default function BookingWidget({ pricePerNight, baseCapacity, maxExtraCap
         </button>
       </div>
 
-      {/* اینپوت تقویم برای موبایل (در بدنه صفحه نمایش داده می‌شود تا کاربر اسکرول کند و انتخاب کند) */}
+      {/* اینپوت تقویم برای موبایل */}
       <div className="md:hidden mt-8 mb-24 bg-white border border-slate-100 rounded-3xl p-5 shadow-sm flex flex-col gap-4">
         <h3 className="font-black text-slate-700">انتخاب تاریخ و مسافران</h3>
         
@@ -201,10 +209,19 @@ export default function BookingWidget({ pricePerNight, baseCapacity, maxExtraCap
         </div>
 
         {nightsCount > 0 && (
-          <div className="bg-balkun-cyan/10 rounded-xl p-3 text-center mt-2">
-            <span className="font-black text-balkun-navy">مجموع: {formatPrice(totalPrice)} تومان</span>
+          <div className="bg-balkun-cyan/10 rounded-xl p-3 text-center mt-2 flex flex-col gap-1">
+             <span className="text-xs font-bold text-slate-600">قیمت هر شب: {formatPrice(nightlyRate)}</span>
+             <span className="font-black text-balkun-navy">مجموع {nightsCount} شب: {formatPrice(totalPrice)} تومان</span>
           </div>
         )}
+        
+        <button 
+          onClick={handleBooking}
+          disabled={dates.length !== 2}
+          className="w-full mt-2 bg-balkun-orange hover:bg-balkun-orange-dark text-white font-black text-lg py-4 rounded-2xl shadow-lg shadow-balkun-orange/30 disabled:opacity-50 disabled:shadow-none transition-all"
+        >
+          {dates.length === 2 ? "ادامه و ثبت رزرو" : "تاریخ را مشخص کنید"}
+        </button>
       </div>
     </>
   );

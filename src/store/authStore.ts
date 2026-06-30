@@ -11,6 +11,7 @@ interface AuthState {
   login: (user: User, token: string) => void;
   logout: () => void;
   updateUser: (userData: Partial<User>) => void;
+  setUser: (user: User) => void;
 }
 
 export const useAuthStore = create<AuthState>()(
@@ -38,6 +39,11 @@ export const useAuthStore = create<AuthState>()(
         set((state) => ({
           user: state.user ? { ...state.user, ...userData } : null,
         })),
+
+      setUser: (user) =>
+        set({
+          user,
+        }),
     }),
     {
       name: "balkun-auth-storage", // نام کلید در LocalStorage

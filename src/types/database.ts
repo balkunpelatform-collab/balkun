@@ -13,6 +13,7 @@ export interface User {
   phoneNumber: string; // Primary Key - Unique
   firstName: string;
   lastName: string;
+  email?: string | null; // اختیاری
   userType: UserType;
   organizationName: string | null; // Null if NORMAL user
   joinedAt: Date | string;
@@ -68,6 +69,7 @@ export interface Booking {
   checkOutDate: Date | string;
   basePersonCount: number;
   extraPersonCount: number;
+  nationalCode: string; // کد ملی مهمان اصلی - الزامی برای ثبت در اتاقک
   totalPaidAmount: number; // MUST include 5% margin
   status: BookingStatus;
   isVisibleForUser: boolean; // 15-min visibility rule if cancelled

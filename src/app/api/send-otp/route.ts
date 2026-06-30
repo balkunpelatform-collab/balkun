@@ -1,6 +1,3 @@
-// مسیر: src/app/api/auth/send-otp/route.ts
-// این فایل را به‌طور کامل جایگزین فایل فعلی کنید
-
 import { NextResponse } from "next/server";
 import { createOtp } from "@/lib/otp/otpService";
 import { sendOtpSms } from "@/lib/sms/smsService";
@@ -13,7 +10,6 @@ export async function POST(request: Request) {
       return NextResponse.json({ success: false, error: "شماره موبایل نامعتبر است" }, { status: 400 });
     }
 
-    // 🟢 ذخیره‌ی واقعی کد در جدول otp_codes با انقضای زمانی (به‌جای موک قدیمی فاز ۲)
     const result = await createOtp(phoneNumber);
 
     if (!result.success) {
