@@ -1,0 +1,38 @@
+export const MOCK_PROPERTIES = [
+  {
+    id: "1",
+    title: "ویلا استخردار لوکس آبسرد",
+    location: "تهران، دماوند",
+    imageUrl: "https://placehold.co/800x600/00aeef/ffffff.png?text=Villa+Balkun",
+    rating: 4.8,
+    rawPrice: 3500000,
+    features: ["استخردار", "۳ خوابه"],
+  },
+  {
+    id: "2",
+    title: "کلبه چوبی جنگلی مهرو",
+    location: "مازندران، ماسال",
+    imageUrl: "https://placehold.co/800x600/153e75/ffffff.png?text=Cabin+Balkun",
+    rating: 4.5,
+    rawPrice: 1200000,
+    features: ["جنگلی", "۱ خوابه"],
+  },
+  {
+    id: "3",
+    title: "بوم‌گردی سنتی ترنج",
+    location: "اصفهان، کاشان",
+    imageUrl: "https://placehold.co/800x600/fdb913/ffffff.png?text=Eco+Balkun",
+    rating: 4.9,
+    rawPrice: 800000,
+    features: ["سنتی", "صبحانه رایگان"],
+  },
+  {
+    id: "4",
+    title: "پنت‌هاوس ساحلی رویال",
+    location: "هرمزگان، کیش",
+    imageUrl: "https://placehold.co/800x600/f37021/ffffff.png?text=Beach+Balkun",
+    rating: 4.7,
+    rawPrice: 5000000,
+    features: ["ساحلی", "ویو دریا"],
+  },
+];

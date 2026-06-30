@@ -1,26 +1,22 @@
 @import "tailwindcss";
 
-:root {
-  --background: #ffffff;
-  --foreground: #171717;
-}
+@theme {
+  /* تم رنگی اصلی برگرفته از لوگو بالکن */
+  --color-balkun-cyan: #00aeef; /* رنگ آبی فیروزه‌ای پین */
+  --color-balkun-cyan-dark: #008fce;
+  
+  --color-balkun-navy: #153e75; /* رنگ سرمه‌ای موج‌ها - برای متون تیره و فوتر */
+  --color-balkun-navy-dark: #0d2850;
+  
+  --color-balkun-orange: #f37021; /* رنگ نارنجی دسته ذره‌بین - برای دکمه‌ها و اکشن‌ها */
+  --color-balkun-orange-dark: #d95e16;
+  
+  --color-balkun-yellow: #fdb913; /* رنگ زرد خورشید - برای ستاره‌ها و مدال‌ها */
 
-@theme inline {
-  --color-background: var(--background);
-  --color-foreground: var(--foreground);
-  --font-sans: var(--font-geist-sans);
-  --font-mono: var(--font-geist-mono);
-}
-
-@media (prefers-color-scheme: dark) {
-  :root {
-    --background: #0a0a0a;
-    --foreground: #ededed;
-  }
+  /* معرفی وزیرمتن به عنوان فونت پیش‌فرض سیستم تیلویند */
+  --font-sans: var(--font-vazirmatn), ui-sans-serif, system-ui, sans-serif;
 }
 
 body {
-  background: var(--background);
-  color: var(--foreground);
-  font-family: Arial, Helvetica, sans-serif;
+  @apply bg-slate-50 text-slate-900 min-h-screen;
 }
