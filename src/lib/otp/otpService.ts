@@ -1,7 +1,5 @@
-// مسیر مقصد این فایل (فایل جدید): src/lib/otp/otpService.ts
-//
-// مدیریت کامل چرخه‌ی عمر کد تایید (OTP) با ذخیره‌سازی واقعی در جدول
-// otp_codes و رعایت انقضای زمانی — جایگزین کد ثابت "1234" فاز ۲.
+// مسیر: src/lib/otp/otpService.ts
+// این فایل را به‌طور کامل جایگزین فایل فعلی کنید
 
 import { supabaseAdmin } from "@/lib/supabase-admin";
 
@@ -19,6 +17,18 @@ function generateSixDigitCode(): string {
 export async function createOtp(
   phoneNumber: string
 ): Promise<{ success: true; code: string } | { success: false; error: string }> {
+  // 🟢 بررسی صحت اتصال Supabase Admin پیش از هر کاری — اگر env خالی باشد همینجا مشخص می‌شود
+  if (!process.env.NEXT_PUBLIC_SUPABASE_URL || !process.env.SUPABASE_SERVICE_ROLE_KEY) {
+    console.error("❌ Supabase Admin env variables are missing!");
+    return {
+      success: false,
+      error:
+        process.env.NODE_ENV !== "production"
+          ? "خطا در تولید کد تایید [DEBUG: متغیرهای NEXT_PUBLIC_SUPABASE_URL یا SUPABASE_SERVICE_ROLE_KEY در .env.local خالی هستند — سرور را ری‌استارت کنید]"
+          : "خطا در تولید کد تایید",
+    };
+  }
+
   const { data: lastOtp } = await supabaseAdmin
     .from("otp_codes")
     .select("createdAt")
@@ -44,7 +54,14 @@ export async function createOtp(
 
   if (error) {
     console.error("Create OTP Error:", error);
-    return { success: false, error: "خطا در تولید کد تایید" };
+    // 🟢 در حالت توسعه، پیام دقیق Supabase را هم برمی‌گردانیم تا علت واقعی مشخص شود
+    const debugSuffix =
+      process.env.NODE_ENV !== "production"
+        ? ` [DEBUG: ${error.message}${error.hint ? " | hint: " + error.hint : ""}${
+            error.code ? " | code: " + error.code : ""
+          }]`
+        : "";
+    return { success: false, error: "خطا در تولید کد تایید" + debugSuffix };
   }
 
   return { success: true, code };
@@ -57,7 +74,7 @@ export async function createOtp(
 export async function isOtpValid(phoneNumber: string, code: string): Promise<boolean> {
   if (!phoneNumber || !code) return false;
 
-  const { data } = await supabaseAdmin
+  const { data, error } = await supabaseAdmin
     .from("otp_codes")
     .select("expiresAt")
     .eq("phoneNumber", phoneNumber)
@@ -66,6 +83,10 @@ export async function isOtpValid(phoneNumber: string, code: string): Promise<boo
     .order("createdAt", { ascending: false })
     .limit(1)
     .maybeSingle();
+
+  if (error) {
+    console.error("isOtpValid Error:", error);
+  }
 
   if (!data) return false;
   return new Date(data.expiresAt).getTime() > Date.now();
@@ -76,9 +97,13 @@ export async function isOtpValid(phoneNumber: string, code: string): Promise<boo
  * فرآیند (ورود موفق یا ثبت‌نام موفق) باید صدا زده شود.
  */
 export async function consumeOtp(phoneNumber: string, code: string): Promise<void> {
-  await supabaseAdmin
+  const { error } = await supabaseAdmin
     .from("otp_codes")
     .update({ isUsed: true })
     .eq("phoneNumber", phoneNumber)
     .eq("code", code);
+
+  if (error) {
+    console.error("consumeOtp Error:", error);
+  }
 }
