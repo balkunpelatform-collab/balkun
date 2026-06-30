@@ -1,5 +1,4 @@
 import { createClient } from "@supabase/supabase-js";
-import type { Database } from "@/types/database"; // در آینده تایپ‌های جنریت شده سوپابیس رو هم میشه اینجا اضافه کرد
 
 // آدرس و کلید عمومی سوپابیس که باید در فایل env.local قرار بگیرند
 const supabaseUrl = process.env.NEXT_PUBLIC_SUPABASE_URL || "";

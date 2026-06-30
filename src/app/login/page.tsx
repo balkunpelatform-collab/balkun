@@ -1,3 +1,6 @@
+// مسیر مقصد این فایل: src/app/login/page.tsx
+// این فایل را به‌طور کامل جایگزین فایل فعلی کنید
+
 "use client";
 
 import { useState } from "react";
@@ -6,14 +9,13 @@ import Link from "next/link";
 import { useRouter } from "next/navigation";
 import { ArrowRight, Phone, ShieldCheck, User as UserIcon } from "lucide-react";
 import { useAuthStore } from "@/store/authStore";
-import type { User } from "@/types/database";
 
 type AuthStep = "PHONE_INPUT" | "OTP_INPUT" | "REGISTER_INFO";
 
 export default function LoginPage() {
   const router = useRouter();
   const { login } = useAuthStore();
-  
+
   const [step, setStep] = useState<AuthStep>("PHONE_INPUT");
   const [phoneNumber, setPhoneNumber] = useState("");
   const [otp, setOtp] = useState("");
@@ -22,12 +24,9 @@ export default function LoginPage() {
   const [isLoading, setIsLoading] = useState(false);
   const [error, setError] = useState("");
 
-  // Step 1: بررسی شماره موبایل
-  const handlePhoneSubmit = (e: React.FormEvent) => {
+  const handlePhoneSubmit = async (e: React.FormEvent) => {
     e.preventDefault();
     setError("");
-    
-    // اعتبارسنجی ساده شماره ایران
     const phoneRegex = /^09[0-9]{9}$/;
     if (!phoneRegex.test(phoneNumber)) {
       setError("لطفا یک شماره موبایل معتبر وارد کنید (مثال: 09123456789)");
@@ -35,83 +34,93 @@ export default function LoginPage() {
     }
 
     setIsLoading(true);
-    // TODO: Connect to real API later
-    setTimeout(() => {
+    try {
+      const res = await fetch("/api/auth/send-otp", {
+        method: "POST",
+        headers: { "Content-Type": "application/json" },
+        body: JSON.stringify({ phoneNumber }),
+      });
+      const data = await res.json();
+      if (data.success) {
+        setStep("OTP_INPUT");
+      } else {
+        setError(data.error || "خطا در ارسال پیامک");
+      }
+    } catch (err) {
+      setError("خطا در برقراری ارتباط با سرور");
+    } finally {
       setIsLoading(false);
-      setStep("OTP_INPUT");
-    }, 1000);
+    }
   };
 
-  // Step 2: بررسی کد OTP
-  const handleOtpSubmit = (e: React.FormEvent) => {
+  const handleOtpSubmit = async (e: React.FormEvent) => {
     e.preventDefault();
     setError("");
-
     if (otp.length !== 4) {
       setError("کد تایید باید ۴ رقم باشد");
       return;
     }
 
     setIsLoading(true);
-    // TODO: Connect to real API later (Here we simulate a response)
-    setTimeout(() => {
-      setIsLoading(false);
-      // شبیه‌سازی: اگر شماره به 1 ختم بشه کاربر جدیده، در غیر اینصورت لاگین میشه
-      if (phoneNumber.endsWith("1")) {
-        setStep("REGISTER_INFO");
+    try {
+      const res = await fetch("/api/auth/verify-otp", {
+        method: "POST",
+        headers: { "Content-Type": "application/json" },
+        body: JSON.stringify({ phoneNumber, otp }),
+      });
+      const data = await res.json();
+
+      if (data.success) {
+        if (data.isNewUser) {
+          setStep("REGISTER_INFO"); // کاربر جدیده، بره فرم ثبت‌نام
+        } else {
+          login(data.user, data.token); // کاربر قدیمیه، لاگین شد
+          router.push("/");
+        }
       } else {
-        // لاگین موفقیت آمیز (کاربر قدیمی)
-        const mockUser: User = {
-          id: "123",
-          phoneNumber,
-          firstName: "کاربر",
-          lastName: "بالکن",
-          userType: "NORMAL", // یا ORGANIZATIONAL بر اساس دیتابیس
-          organizationName: null,
-          joinedAt: new Date().toISOString(),
-          lastLoginAt: new Date().toISOString(),
-          isActive: true,
-        };
-        login(mockUser, "mock-jwt-token-12345");
-        router.push("/");
+        setError(data.error || "کد وارد شده نامعتبر است");
       }
-    }, 1200);
+    } catch (err) {
+      setError("خطا در بررسی کد تایید");
+    } finally {
+      setIsLoading(false);
+    }
   };
 
-  // Step 3: ثبت نام کاربر جدید
-  const handleRegisterSubmit = (e: React.FormEvent) => {
+  const handleRegisterSubmit = async (e: React.FormEvent) => {
     e.preventDefault();
     setError("");
-
     if (firstName.length < 2 || lastName.length < 2) {
       setError("لطفا نام و نام خانوادگی خود را به درستی وارد کنید");
       return;
     }
 
     setIsLoading(true);
-    // TODO: Connect to real API later
-    setTimeout(() => {
+    try {
+      const res = await fetch("/api/auth/register", {
+        method: "POST",
+        headers: { "Content-Type": "application/json" },
+        // 🟢 ارسال otp همراه با اطلاعات ثبت‌نام، تا سرور بتواند مرحله تایید را
+        // به‌صورت مستقل و امن دوباره بررسی کند.
+        body: JSON.stringify({ phoneNumber, otp, firstName, lastName }),
+      });
+      const data = await res.json();
+
+      if (data.success) {
+        login(data.user, data.token);
+        router.push("/");
+      } else {
+        setError(data.error || "خطا در ثبت نام");
+      }
+    } catch (err) {
+      setError("خطا در ثبت اطلاعات");
+    } finally {
       setIsLoading(false);
-      const newUser: User = {
-        id: "124",
-        phoneNumber,
-        firstName,
-        lastName,
-        userType: "NORMAL",
-        organizationName: null,
-        joinedAt: new Date().toISOString(),
-        lastLoginAt: new Date().toISOString(),
-        isActive: true,
-      };
-      login(newUser, "mock-jwt-token-67890");
-      router.push("/");
-    }, 1200);
+    }
   };
 
   return (
     <div className="min-h-screen bg-slate-50 flex flex-col md:flex-row">
-      
-      {/* بخش راست - تصویر و معرفی (فقط در دسکتاپ) */}
       <div className="hidden md:flex flex-1 relative bg-balkun-navy flex-col justify-center items-center p-12 overflow-hidden">
         <div className="absolute inset-0 z-0 opacity-20">
           <Image src="/hero1.webp" alt="پس زمینه" fill className="object-cover" />
@@ -126,17 +135,12 @@ export default function LoginPage() {
         </div>
       </div>
 
-      {/* بخش چپ - فرم ورود */}
       <div className="flex-1 flex flex-col justify-center items-center p-6 bg-white md:rounded-l-3xl shadow-[-20px_0_40px_rgba(0,0,0,0.02)] relative z-10">
-        
-        {/* دکمه بازگشت */}
         <Link href="/" className="absolute top-6 right-6 p-2 text-slate-400 hover:text-balkun-navy transition-colors bg-slate-50 rounded-full">
           <ArrowRight className="w-6 h-6" />
         </Link>
 
         <div className="w-full max-w-sm flex flex-col items-center">
-          
-          {/* لوگو در موبایل */}
           <div className="md:hidden w-20 h-20 bg-white border border-slate-100 rounded-2xl flex items-center justify-center p-2 mb-8 shadow-sm">
             <Image src="/logo.png" alt="بالکن" width={60} height={60} className="object-contain" />
           </div>
@@ -160,7 +164,6 @@ export default function LoginPage() {
             </div>
           )}
 
-          {/* فرم مرحله 1: شماره موبایل */}
           {step === "PHONE_INPUT" && (
             <form onSubmit={handlePhoneSubmit} className="w-full">
               <div className="relative mb-6">
@@ -178,17 +181,12 @@ export default function LoginPage() {
                   autoFocus
                 />
               </div>
-              <button 
-                disabled={isLoading || phoneNumber.length !== 11}
-                type="submit" 
-                className="w-full bg-balkun-orange hover:bg-balkun-orange-dark text-white rounded-2xl py-4 font-bold text-lg transition-all duration-300 shadow-lg shadow-balkun-orange/30 hover:shadow-balkun-orange/50 disabled:opacity-50 disabled:cursor-not-allowed flex items-center justify-center gap-2"
-              >
+              <button disabled={isLoading || phoneNumber.length !== 11} type="submit" className="w-full bg-balkun-orange hover:bg-balkun-orange-dark text-white rounded-2xl py-4 font-bold text-lg transition-all duration-300 shadow-lg shadow-balkun-orange/30 disabled:opacity-50 disabled:cursor-not-allowed flex justify-center items-center gap-2">
                 {isLoading ? <span className="animate-pulse">در حال بررسی...</span> : "مرحله بعد"}
               </button>
             </form>
           )}
 
-          {/* فرم مرحله 2: کد تایید */}
           {step === "OTP_INPUT" && (
             <form onSubmit={handleOtpSubmit} className="w-full">
               <div className="relative mb-6">
@@ -206,25 +204,15 @@ export default function LoginPage() {
                   autoFocus
                 />
               </div>
-              <button 
-                disabled={isLoading || otp.length !== 4}
-                type="submit" 
-                className="w-full bg-balkun-orange hover:bg-balkun-orange-dark text-white rounded-2xl py-4 font-bold text-lg transition-all duration-300 shadow-lg shadow-balkun-orange/30 disabled:opacity-50 disabled:cursor-not-allowed"
-              >
+              <button disabled={isLoading || otp.length !== 4} type="submit" className="w-full bg-balkun-orange hover:bg-balkun-orange-dark text-white rounded-2xl py-4 font-bold text-lg transition-all duration-300 shadow-lg shadow-balkun-orange/30 disabled:opacity-50 disabled:cursor-not-allowed">
                 {isLoading ? <span className="animate-pulse">کمی صبر کنید...</span> : "تایید و ورود"}
               </button>
-              
-              <button 
-                type="button"
-                onClick={() => setStep("PHONE_INPUT")}
-                className="w-full mt-4 text-sm font-bold text-slate-500 hover:text-balkun-navy transition-colors"
-              >
+              <button type="button" onClick={() => setStep("PHONE_INPUT")} className="w-full mt-4 text-sm font-bold text-slate-500 hover:text-balkun-navy transition-colors">
                 اصلاح شماره موبایل
               </button>
             </form>
           )}
 
-          {/* فرم مرحله 3: تکمیل اطلاعات */}
           {step === "REGISTER_INFO" && (
             <form onSubmit={handleRegisterSubmit} className="w-full">
               <div className="flex flex-col gap-4 mb-6">
@@ -232,33 +220,16 @@ export default function LoginPage() {
                   <div className="absolute inset-y-0 right-0 pr-4 flex items-center pointer-events-none">
                     <UserIcon className="w-5 h-5 text-slate-400" />
                   </div>
-                  <input
-                    type="text"
-                    placeholder="نام"
-                    value={firstName}
-                    onChange={(e) => setFirstName(e.target.value)}
-                    className="w-full bg-slate-50 border border-slate-200 text-slate-900 rounded-2xl py-4 pr-12 pl-4 text-right font-bold focus:outline-none focus:ring-2 focus:ring-balkun-cyan/50 focus:border-balkun-cyan transition-all"
-                    autoFocus
-                  />
+                  <input type="text" placeholder="نام" value={firstName} onChange={(e) => setFirstName(e.target.value)} className="w-full bg-slate-50 border border-slate-200 text-slate-900 rounded-2xl py-4 pr-12 pl-4 text-right font-bold focus:outline-none focus:ring-2 focus:ring-balkun-cyan/50 focus:border-balkun-cyan transition-all" autoFocus />
                 </div>
                 <div className="relative">
                   <div className="absolute inset-y-0 right-0 pr-4 flex items-center pointer-events-none">
                     <UserIcon className="w-5 h-5 text-slate-400" />
                   </div>
-                  <input
-                    type="text"
-                    placeholder="نام خانوادگی"
-                    value={lastName}
-                    onChange={(e) => setLastName(e.target.value)}
-                    className="w-full bg-slate-50 border border-slate-200 text-slate-900 rounded-2xl py-4 pr-12 pl-4 text-right font-bold focus:outline-none focus:ring-2 focus:ring-balkun-cyan/50 focus:border-balkun-cyan transition-all"
-                  />
+                  <input type="text" placeholder="نام خانوادگی" value={lastName} onChange={(e) => setLastName(e.target.value)} className="w-full bg-slate-50 border border-slate-200 text-slate-900 rounded-2xl py-4 pr-12 pl-4 text-right font-bold focus:outline-none focus:ring-2 focus:ring-balkun-cyan/50 focus:border-balkun-cyan transition-all" />
                 </div>
               </div>
-              <button 
-                disabled={isLoading}
-                type="submit" 
-                className="w-full bg-balkun-orange hover:bg-balkun-orange-dark text-white rounded-2xl py-4 font-bold text-lg transition-all duration-300 shadow-lg shadow-balkun-orange/30 disabled:opacity-50 disabled:cursor-not-allowed"
-              >
+              <button disabled={isLoading} type="submit" className="w-full bg-balkun-orange hover:bg-balkun-orange-dark text-white rounded-2xl py-4 font-bold text-lg transition-all duration-300 shadow-lg shadow-balkun-orange/30 disabled:opacity-50 disabled:cursor-not-allowed">
                 {isLoading ? <span className="animate-pulse">در حال ثبت...</span> : "ثبت نام و ورود به بالکن"}
               </button>
             </form>
@@ -267,7 +238,6 @@ export default function LoginPage() {
           <p className="mt-8 text-xs text-slate-400 font-medium text-center leading-relaxed">
             با ورود و ثبت‌نام در سایت، <Link href="/terms" className="text-balkun-cyan font-bold hover:underline">قوانین و مقررات</Link> بالکن را می‌پذیرم.
           </p>
-
         </div>
       </div>
     </div>

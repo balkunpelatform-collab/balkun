@@ -1,3 +1,7 @@
+// مسیر مقصد این فایل: src/components/home/properties/PropertyCard.tsx
+// این فایل را به‌طور کامل جایگزین فایل فعلی کنید
+// تغییر اصلی: نمایش امکانات (features) به صورت چیپ‌های کوچک زیر عنوان، برای حرفه‌ای‌تر شدن کارت
+
 import Image from "next/image";
 import { Star, Heart, MapPin } from "lucide-react";
 import { applyBalkunMargin, formatPrice } from "@/utils/priceCalculator";
@@ -11,7 +15,7 @@ interface PropertyCardProps {
   features: string[];
 }
 
-export default function PropertyCard({ title, location, imageUrl, rating, rawPrice }: PropertyCardProps) {
+export default function PropertyCard({ title, location, imageUrl, rating, rawPrice, features }: PropertyCardProps) {
   // محاسبه قیمت نهایی با احتساب ۵٪ سود بالکن
   const finalPrice = applyBalkunMargin(rawPrice);
 
@@ -42,9 +46,23 @@ export default function PropertyCard({ title, location, imageUrl, rating, rawPri
 
       {/* Content */}
       <div className="flex flex-col px-1 pt-1">
-        <div className="flex justify-between items-start gap-2 mb-2">
+        <div className="flex justify-between items-start gap-2 mb-1.5">
           <h3 className="font-bold text-sm text-balkun-navy line-clamp-1">{title}</h3>
         </div>
+
+        {/* Feature Chips */}
+        {features.length > 0 && (
+          <div className="flex items-center gap-1.5 mb-2.5 overflow-hidden">
+            {features.slice(0, 2).map((feature) => (
+              <span
+                key={feature}
+                className="text-[10px] font-bold text-balkun-cyan bg-balkun-cyan/10 px-2 py-1 rounded-full whitespace-nowrap"
+              >
+                {feature}
+              </span>
+            ))}
+          </div>
+        )}
 
         {/* Rating and Reviews */}
         <div className="flex justify-between items-center mb-3">

@@ -1,4 +1,23 @@
-export const MOCK_PROPERTIES = [
+// مسیر مقصد این فایل: src/constants/mockProperties.ts
+// این فایل را به‌طور کامل جایگزین فایل فعلی کنید
+//
+// نکته مهم: تا زمانی که API اتاقک به پروژه متصل نشده (فاز ۳)، تمام داده‌های این فایل
+// نمونه (Mock) هستند تا چیدمان واقعی صفحه اصلی قابل تست و بازبینی باشد.
+// فیلد "category" دقیقاً باید با id های موجود در src/constants/categories.ts یکی باشد.
+
+export interface MockProperty {
+  id: string;
+  title: string;
+  location: string;
+  imageUrl: string;
+  rating: number;
+  rawPrice: number;
+  features: string[];
+  category: string;
+}
+
+export const MOCK_PROPERTIES: MockProperty[] = [
+  // ===================== ویلا (villa) =====================
   {
     id: "1",
     title: "ویلا استخردار لوکس آبسرد",
@@ -7,32 +26,288 @@ export const MOCK_PROPERTIES = [
     rating: 4.8,
     rawPrice: 3500000,
     features: ["استخردار", "۳ خوابه"],
+    category: "villa",
   },
   {
     id: "2",
+    title: "ویلا دوبلکس مدرن کردان",
+    location: "البرز، کرج",
+    imageUrl: "https://placehold.co/800x600/153e75/ffffff.png?text=Villa+Balkun",
+    rating: 4.6,
+    rawPrice: 4200000,
+    features: ["دوبلکس", "نزدیک طبیعت"],
+    category: "villa",
+  },
+  {
+    id: "3",
+    title: "ویلا ساحلی نوشهر",
+    location: "مازندران، نوشهر",
+    imageUrl: "https://placehold.co/800x600/f37021/ffffff.png?text=Villa+Balkun",
+    rating: 4.9,
+    rawPrice: 5100000,
+    features: ["ویو دریا", "۴ خوابه"],
+    category: "villa",
+  },
+  {
+    id: "4",
+    title: "ویلا باغی فشم",
+    location: "تهران، فشم",
+    imageUrl: "https://placehold.co/800x600/fdb913/ffffff.png?text=Villa+Balkun",
+    rating: 4.5,
+    rawPrice: 2800000,
+    features: ["باغ بزرگ", "باربیکیو"],
+    category: "villa",
+  },
+
+  // ===================== کلبه (cabin) =====================
+  {
+    id: "5",
     title: "کلبه چوبی جنگلی مهرو",
     location: "مازندران، ماسال",
     imageUrl: "https://placehold.co/800x600/153e75/ffffff.png?text=Cabin+Balkun",
     rating: 4.5,
     rawPrice: 1200000,
     features: ["جنگلی", "۱ خوابه"],
+    category: "cabin",
   },
   {
-    id: "3",
+    id: "6",
+    title: "کلبه رویایی فیلبند",
+    location: "مازندران، آمل",
+    imageUrl: "https://placehold.co/800x600/00aeef/ffffff.png?text=Cabin+Balkun",
+    rating: 4.7,
+    rawPrice: 1450000,
+    features: ["شومینه", "ویو کوه"],
+    category: "cabin",
+  },
+  {
+    id: "7",
+    title: "کلبه سنتی اسالم",
+    location: "گیلان، اسالم",
+    imageUrl: "https://placehold.co/800x600/f37021/ffffff.png?text=Cabin+Balkun",
+    rating: 4.4,
+    rawPrice: 1100000,
+    features: ["معماری سنتی", "صبحانه رایگان"],
+    category: "cabin",
+  },
+  {
+    id: "8",
+    title: "کلبه برفی دیزین",
+    location: "تهران، دیزین",
+    imageUrl: "https://placehold.co/800x600/fdb913/ffffff.png?text=Cabin+Balkun",
+    rating: 4.8,
+    rawPrice: 1800000,
+    features: ["نزدیک پیست اسکی", "گرمایش مرکزی"],
+    category: "cabin",
+  },
+
+  // ===================== سوییت (suite) =====================
+  {
+    id: "9",
+    title: "سوییت مبله مرکز شهر مشهد",
+    location: "خراسان رضوی، مشهد",
+    imageUrl: "https://placehold.co/800x600/00aeef/ffffff.png?text=Suite+Balkun",
+    rating: 4.3,
+    rawPrice: 950000,
+    features: ["نزدیک حرم", "آسانسور"],
+    category: "suite",
+  },
+  {
+    id: "10",
+    title: "سوییت لوکس برج میلاد",
+    location: "تهران، تهران",
+    imageUrl: "https://placehold.co/800x600/153e75/ffffff.png?text=Suite+Balkun",
+    rating: 4.6,
+    rawPrice: 1600000,
+    features: ["ویو شهر", "پارکینگ"],
+    category: "suite",
+  },
+  {
+    id: "11",
+    title: "سوییت نقلی شیراز",
+    location: "فارس، شیراز",
+    imageUrl: "https://placehold.co/800x600/f37021/ffffff.png?text=Suite+Balkun",
+    rating: 4.5,
+    rawPrice: 880000,
+    features: ["نزدیک حافظیه", "اینترنت پرسرعت"],
+    category: "suite",
+  },
+  {
+    id: "12",
+    title: "سوییت تجاری اصفهان",
+    location: "اصفهان، اصفهان",
+    imageUrl: "https://placehold.co/800x600/fdb913/ffffff.png?text=Suite+Balkun",
+    rating: 4.4,
+    rawPrice: 920000,
+    features: ["نزدیک میدان نقش‌جهان", "مبله کامل"],
+    category: "suite",
+  },
+
+  // ===================== بوم‌گردی (eco) =====================
+  {
+    id: "13",
     title: "بوم‌گردی سنتی ترنج",
     location: "اصفهان، کاشان",
     imageUrl: "https://placehold.co/800x600/fdb913/ffffff.png?text=Eco+Balkun",
     rating: 4.9,
     rawPrice: 800000,
     features: ["سنتی", "صبحانه رایگان"],
+    category: "eco",
   },
   {
-    id: "4",
+    id: "14",
+    title: "اقامتگاه بومی ماسوله",
+    location: "گیلان، ماسوله",
+    imageUrl: "https://placehold.co/800x600/00aeef/ffffff.png?text=Eco+Balkun",
+    rating: 4.7,
+    rawPrice: 750000,
+    features: ["معماری پلکانی", "غذای محلی"],
+    category: "eco",
+  },
+  {
+    id: "15",
+    title: "خانه روستایی ابیانه",
+    location: "اصفهان، ابیانه",
+    imageUrl: "https://placehold.co/800x600/153e75/ffffff.png?text=Eco+Balkun",
+    rating: 4.6,
+    rawPrice: 700000,
+    features: ["روستای تاریخی", "فرهنگ محلی"],
+    category: "eco",
+  },
+  {
+    id: "16",
+    title: "اقامتگاه عشایری بختیاری",
+    location: "چهارمحال و بختیاری، اردل",
+    imageUrl: "https://placehold.co/800x600/f37021/ffffff.png?text=Eco+Balkun",
+    rating: 4.5,
+    rawPrice: 650000,
+    features: ["طبیعت بکر", "تجربه عشایری"],
+    category: "eco",
+  },
+
+  // ===================== خارج کشور (abroad) =====================
+  {
+    id: "17",
+    title: "آپارتمان ساحلی آنتالیا",
+    location: "ترکیه، آنتالیا",
+    imageUrl: "https://placehold.co/800x600/00aeef/ffffff.png?text=Abroad+Balkun",
+    rating: 4.7,
+    rawPrice: 6500000,
+    features: ["ویو دریا", "استخر مشترک"],
+    category: "abroad",
+  },
+  {
+    id: "18",
+    title: "هتل آپارتمان دبی",
+    location: "امارات، دبی",
+    imageUrl: "https://placehold.co/800x600/153e75/ffffff.png?text=Abroad+Balkun",
+    rating: 4.8,
+    rawPrice: 9200000,
+    features: ["مرکز شهر", "خدمات هتلی"],
+    category: "abroad",
+  },
+  {
+    id: "19",
+    title: "ویلا استانبول",
+    location: "ترکیه، استانبول",
+    imageUrl: "https://placehold.co/800x600/f37021/ffffff.png?text=Abroad+Balkun",
+    rating: 4.6,
+    rawPrice: 7800000,
+    features: ["نزدیک تقسیم", "۴ خوابه"],
+    category: "abroad",
+  },
+  {
+    id: "20",
+    title: "هتل آپارتمان باکو",
+    location: "آذربایجان، باکو",
+    imageUrl: "https://placehold.co/800x600/fdb913/ffffff.png?text=Abroad+Balkun",
+    rating: 4.5,
+    rawPrice: 5400000,
+    features: ["نزدیک میدان فواره", "صبحانه رایگان"],
+    category: "abroad",
+  },
+
+  // ===================== جنگلی (forest) =====================
+  {
+    id: "21",
+    title: "اقامتگاه جنگلی سی‌سنگان",
+    location: "مازندران، نور",
+    imageUrl: "https://placehold.co/800x600/153e75/ffffff.png?text=Forest+Balkun",
+    rating: 4.6,
+    rawPrice: 1700000,
+    features: ["نزدیک ساحل و جنگل", "آلاچیق اختصاصی"],
+    category: "forest",
+  },
+  {
+    id: "22",
+    title: "ویلا جنگلی لفور",
+    location: "گیلان، رودبار",
+    imageUrl: "https://placehold.co/800x600/00aeef/ffffff.png?text=Forest+Balkun",
+    rating: 4.7,
+    rawPrice: 1900000,
+    features: ["سکوت کامل", "تراس چوبی"],
+    category: "forest",
+  },
+  {
+    id: "23",
+    title: "کلبه جنگل ابر",
+    location: "سمنان، شاهرود",
+    imageUrl: "https://placehold.co/800x600/f37021/ffffff.png?text=Forest+Balkun",
+    rating: 4.8,
+    rawPrice: 1650000,
+    features: ["جنگل هیرکانی", "مسیر پیاده‌روی"],
+    category: "forest",
+  },
+  {
+    id: "24",
+    title: "اقامتگاه جنگل گیسوم",
+    location: "گیلان، طالش",
+    imageUrl: "https://placehold.co/800x600/fdb913/ffffff.png?text=Forest+Balkun",
+    rating: 4.5,
+    rawPrice: 1550000,
+    features: ["نزدیک جنگل ابر", "فضای خانوادگی"],
+    category: "forest",
+  },
+
+  // ===================== ساحلی (beach) =====================
+  {
+    id: "25",
     title: "پنت‌هاوس ساحلی رویال",
     location: "هرمزگان، کیش",
     imageUrl: "https://placehold.co/800x600/f37021/ffffff.png?text=Beach+Balkun",
     rating: 4.7,
     rawPrice: 5000000,
     features: ["ساحلی", "ویو دریا"],
+    category: "beach",
+  },
+  {
+    id: "26",
+    title: "ویلا ساحلی چابهار",
+    location: "سیستان و بلوچستان، چابهار",
+    imageUrl: "https://placehold.co/800x600/00aeef/ffffff.png?text=Beach+Balkun",
+    rating: 4.5,
+    rawPrice: 4300000,
+    features: ["نزدیک ساحل تیس", "استخر اختصاصی"],
+    category: "beach",
+  },
+  {
+    id: "27",
+    title: "سوییت ساحلی بندرعباس",
+    location: "هرمزگان، بندرعباس",
+    imageUrl: "https://placehold.co/800x600/153e75/ffffff.png?text=Beach+Balkun",
+    rating: 4.4,
+    rawPrice: 2100000,
+    features: ["نزدیک اسکله", "اینترنت پرسرعت"],
+    category: "beach",
+  },
+  {
+    id: "28",
+    title: "ویلا جزیره قشم",
+    location: "هرمزگان، قشم",
+    imageUrl: "https://placehold.co/800x600/fdb913/ffffff.png?text=Beach+Balkun",
+    rating: 4.6,
+    rawPrice: 4800000,
+    features: ["نزدیک ساحل نمکدان", "۳ خوابه"],
+    category: "beach",
   },
 ];
