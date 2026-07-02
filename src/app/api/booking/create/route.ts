@@ -1,13 +1,26 @@
-import { NextResponse } from "next/server";
+// مسیر: src/app/api/booking/create/route.ts
+// نکته امنیتی مهم: پیش‌تر userId مستقیماً از بدنه درخواست کلاینت خوانده می‌شد که یعنی
+// هر کاربر می‌توانست تئوریاً برای شناسه کاربری دیگری رزرو ثبت کند. از این پس userId
+// فقط از هدر امن x-balkun-user-id (تزریق‌شده توسط middleware پس از تایید نشست) خوانده می‌شود.
+
+import { NextRequest, NextResponse } from "next/server";
 import { getRoomById } from "@/lib/otaghak/services/roomService";
 import { supabaseAdmin } from "@/lib/supabase-admin";
 import { isValidIranianNationalCode } from "@/utils/validateNationalCode";
 
-export async function POST(request: Request) {
+export async function POST(request: NextRequest) {
   try {
-    const { roomId, checkinUnix, checkoutUnix, guests, userId, nationalCode } = await request.json();
+    const userId = request.headers.get("x-balkun-user-id");
+    if (!userId) {
+      return NextResponse.json(
+        { success: false, error: "برای ثبت رزرو ابتدا وارد حساب کاربری خود شوید" },
+        { status: 401 }
+      );
+    }
 
-    if (!roomId || !checkinUnix || !checkoutUnix || !guests || !userId || !nationalCode) {
+    const { roomId, checkinUnix, checkoutUnix, guests, nationalCode } = await request.json();
+
+    if (!roomId || !checkinUnix || !checkoutUnix || !guests || !nationalCode) {
       return NextResponse.json({ success: false, error: "اطلاعات ناقص است" }, { status: 400 });
     }
 
@@ -18,7 +31,7 @@ export async function POST(request: Request) {
 
     // ۱. دریافت مجدد اطلاعات اقامتگاه به صورت امن (این دیتا ۵٪ بالکن رو از قبل داره)
     const room = await getRoomById(roomId);
-    
+
     if (!room) {
       return NextResponse.json({ success: false, error: "اقامتگاه یافت نشد" }, { status: 404 });
     }
@@ -32,7 +45,7 @@ export async function POST(request: Request) {
     // ۳. محاسبه مجدد فاکتور (Security Check)
     const nights = Math.max(1, Math.round((checkoutUnix - checkinUnix) / 86400));
     const extraGuests = Math.max(0, guests - room.personCapacity);
-    const nightlyRate = room.afterDiscount + (extraGuests * room.extraPersonPrice);
+    const nightlyRate = room.afterDiscount + extraGuests * room.extraPersonPrice;
     const totalPaidAmount = nights * nightlyRate;
 
     // تبدیل Timestamp به ISO Date برای ذخیره در دیتابیس
@@ -54,8 +67,8 @@ export async function POST(request: Request) {
           nationalCode: String(nationalCode),
           totalPaidAmount,
           status: "WAITING_FOR_PAYMENT", // فعلا منتظر پرداخته (در فاز ۶ به درگاه وصل می‌شه)
-          isVisibleForUser: true
-        }
+          isVisibleForUser: true,
+        },
       ])
       .select()
       .single();
@@ -71,9 +84,8 @@ export async function POST(request: Request) {
     return NextResponse.json({
       success: true,
       bookingId: booking.id,
-      message: "رزرو با موفقیت ثبت شد"
+      message: "رزرو با موفقیت ثبت شد",
     });
-
   } catch (error) {
     console.error("Booking Create API Error:", error);
     return NextResponse.json({ success: false, error: "خطا در پردازش درخواست" }, { status: 500 });

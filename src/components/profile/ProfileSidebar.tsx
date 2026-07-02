@@ -1,9 +1,10 @@
-// مسیر مقصد این فایل (فایل جدید): src/components/profile/ProfileSidebar.tsx
+// مسیر مقصد این فایل: src/components/profile/ProfileSidebar.tsx
 
 "use client";
 
 import Link from "next/link";
 import { useRouter } from "next/navigation";
+import { useState } from "react";
 import { User, Wallet, Settings, LogOut, Briefcase, ChevronLeft, Heart } from "lucide-react";
 import { useAuthStore } from "@/store/authStore";
 import type { User as UserType } from "@/types/database";
@@ -16,10 +17,19 @@ interface ProfileSidebarProps {
 export default function ProfileSidebar({ activeTab, user }: ProfileSidebarProps) {
   const router = useRouter();
   const { logout } = useAuthStore();
+  const [isLoggingOut, setIsLoggingOut] = useState(false);
 
-  const handleLogout = () => {
-    logout();
-    router.push("/");
+  const handleLogout = async () => {
+    setIsLoggingOut(true);
+    try {
+      // 🔐 ابطال کوکی نشست در سمت سرور (پیش از این فقط state محلی پاک می‌شد و کوکی سرور معتبر می‌ماند)
+      await fetch("/api/auth/logout", { method: "POST" });
+    } catch {
+      // حتی اگر درخواست سرور با خطا مواجه شد، همچنان کاربر را از سمت کلاینت خارج می‌کنیم
+    } finally {
+      logout();
+      router.push("/");
+    }
   };
 
   const MENU_ITEMS = [
@@ -83,10 +93,11 @@ export default function ProfileSidebar({ activeTab, user }: ProfileSidebarProps)
 
         <button
           onClick={handleLogout}
-          className="flex items-center gap-3 px-4 py-3.5 rounded-xl text-red-500 hover:bg-red-50 transition-colors w-full text-right"
+          disabled={isLoggingOut}
+          className="flex items-center gap-3 px-4 py-3.5 rounded-xl text-red-500 hover:bg-red-50 transition-colors w-full text-right disabled:opacity-50"
         >
           <LogOut className="w-5 h-5 opacity-70" />
-          <span className="text-sm font-bold">خروج از حساب</span>
+          <span className="text-sm font-bold">{isLoggingOut ? "در حال خروج..." : "خروج از حساب"}</span>
         </button>
       </nav>
     </div>

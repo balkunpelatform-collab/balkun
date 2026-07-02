@@ -2,6 +2,7 @@ import { NextResponse } from "next/server";
 import { supabaseAdmin } from "@/lib/supabase-admin";
 import { isOtpValid, consumeOtp } from "@/lib/otp/otpService";
 import { sendWelcomeSms } from "@/lib/sms/smsService";
+import { createSessionToken, SESSION_COOKIE } from "@/lib/auth/session";
 
 export async function POST(request: Request) {
   try {
@@ -60,13 +61,30 @@ export async function POST(request: Request) {
     // ۷. ارسال پیامک خوش‌آمدگویی (متن متفاوت برای کاربر عادی/سازمانی)
     await sendWelcomeSms(phoneNumber, firstName, userType);
 
-    const mockToken = `balkun-token-${newUser.id}`;
+    // 🔐 صدور نشست امن (همان مکانیزم verify-otp/route.ts)
+    const sessionToken = await createSessionToken({
+      userId: newUser.id,
+      phoneNumber: newUser.phoneNumber,
+      userType: newUser.userType,
+    });
 
-    return NextResponse.json({
+    const legacyClientToken = `balkun-token-${newUser.id}`;
+
+    const response = NextResponse.json({
       success: true,
       user: newUser,
-      token: mockToken,
+      token: legacyClientToken,
     });
+
+    response.cookies.set(SESSION_COOKIE.name, sessionToken, {
+      httpOnly: true,
+      secure: process.env.NODE_ENV === "production",
+      sameSite: "lax",
+      path: "/",
+      maxAge: SESSION_COOKIE.maxAge,
+    });
+
+    return response;
   } catch (error) {
     console.error("Register Error:", error);
     return NextResponse.json({ success: false, error: "خطا در ثبت نام. لطفا مجددا تلاش کنید." }, { status: 500 });

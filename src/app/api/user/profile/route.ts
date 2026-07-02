@@ -1,79 +1,54 @@
 // مسیر: src/app/api/user/profile/route.ts
-// API برای دریافت و ویرایش اطلاعات پروفایل کاربری
+// API دریافت و ویرایش اطلاعات پروفایل کاربری — متصل به Supabase واقعی.
+// شناسه کاربر دیگر از بدنه درخواست یا هدر Authorization خوانده نمی‌شود؛ این مقدار توسط
+// src/middleware.ts پس از اعتبارسنجی امن کوکی نشست، در هدر داخلی x-balkun-user-id تزریق می‌شود.
 
 import { NextRequest, NextResponse } from "next/server";
-
-// Mock Database (در فاز صفر با Supabase جایگزین می‌شود)
-const MOCK_USERS = new Map();
-
-// Helper: استخراج userId از توکن
-function getUserIdFromToken(authHeader: string | null): string | null {
-  if (!authHeader || !authHeader.startsWith("Bearer balkun-token-")) {
-    return null;
-  }
-  return authHeader.replace("Bearer balkun-token-", "");
-}
+import { supabaseAdmin } from "@/lib/supabase-admin";
 
 // GET: دریافت اطلاعات پروفایل
 export async function GET(req: NextRequest) {
   try {
-    const userId = getUserIdFromToken(req.headers.get("authorization"));
-
+    const userId = req.headers.get("x-balkun-user-id");
     if (!userId) {
-      return NextResponse.json(
-        { success: false, error: "احراز هویت ناموفق" },
-        { status: 401 }
-      );
+      return NextResponse.json({ success: false, error: "احراز هویت ناموفق" }, { status: 401 });
     }
 
-    // در حالت Mock، کاربر را از Map یا از Store بازگردانی می‌کنیم
-    const mockUser = {
-      id: userId,
-      phoneNumber: "09123456789",
-      firstName: "کاربر",
-      lastName: "تستی",
-      email: null,
-      userType: "NORMAL" as const,
-      organizationName: null,
-      joinedAt: new Date().toISOString(),
-      lastLoginAt: new Date().toISOString(),
-      isActive: true
-    };
+    const { data: user, error } = await supabaseAdmin
+      .from("users")
+      .select("*")
+      .eq("id", userId)
+      .maybeSingle();
 
-    return NextResponse.json({
-      success: true,
-      user: MOCK_USERS.get(userId) || mockUser
-    });
+    if (error) {
+      console.error("Profile Fetch Error:", error);
+      throw new Error("خطا در ارتباط با پایگاه داده");
+    }
+
+    if (!user) {
+      return NextResponse.json({ success: false, error: "کاربر یافت نشد" }, { status: 404 });
+    }
+
+    return NextResponse.json({ success: true, user });
   } catch (error) {
     console.error("Error fetching profile:", error);
-    return NextResponse.json(
-      { success: false, error: "خطا در دریافت اطلاعات پروفایل" },
-      { status: 500 }
-    );
+    return NextResponse.json({ success: false, error: "خطا در دریافت اطلاعات پروفایل" }, { status: 500 });
   }
 }
 
 // PUT: ویرایش اطلاعات پروفایل
 export async function PUT(req: NextRequest) {
   try {
-    const userId = getUserIdFromToken(req.headers.get("authorization"));
-
+    const userId = req.headers.get("x-balkun-user-id");
     if (!userId) {
-      return NextResponse.json(
-        { success: false, error: "احراز هویت ناموفق" },
-        { status: 401 }
-      );
+      return NextResponse.json({ success: false, error: "احراز هویت ناموفق" }, { status: 401 });
     }
 
     const body = await req.json();
     const { firstName, lastName, email } = body;
 
-    // اعتبارسنجی
     if (!firstName || !lastName) {
-      return NextResponse.json(
-        { success: false, error: "نام و نام خانوادگی الزامی است" },
-        { status: 400 }
-      );
+      return NextResponse.json({ success: false, error: "نام و نام خانوادگی الزامی است" }, { status: 400 });
     }
 
     if (firstName.trim().length < 2 || lastName.trim().length < 2) {
@@ -83,59 +58,32 @@ export async function PUT(req: NextRequest) {
       );
     }
 
-    // اعتبارسنجی ایمیل (اختیاری)
     if (email && email.trim()) {
       const emailRegex = /^[^\s@]+@[^\s@]+\.[^\s@]+$/;
-      if (!emailRegex.test(email)) {
-        return NextResponse.json(
-          { success: false, error: "فرمت ایمیل نامعتبر است" },
-          { status: 400 }
-        );
+      if (!emailRegex.test(email.trim())) {
+        return NextResponse.json({ success: false, error: "فرمت ایمیل نامعتبر است" }, { status: 400 });
       }
     }
 
-    // TODO: در فاز صفر، اینجا با Supabase کار می‌کنیم
-    // const { data, error } = await supabase
-    //   .from('users')
-    //   .update({
-    //     first_name: firstName.trim(),
-    //     last_name: lastName.trim(),
-    //     email: email?.trim() || null
-    //   })
-    //   .eq('id', userId)
-    //   .select()
-    //   .single();
+    const { data: updatedUser, error } = await supabaseAdmin
+      .from("users")
+      .update({
+        firstName: firstName.trim(),
+        lastName: lastName.trim(),
+        email: email?.trim() || null,
+      })
+      .eq("id", userId)
+      .select()
+      .single();
 
-    // فعلاً Mock
-    const currentUser = MOCK_USERS.get(userId) || {
-      id: userId,
-      phoneNumber: "09123456789",
-      userType: "NORMAL",
-      organizationName: null,
-      joinedAt: new Date().toISOString(),
-      lastLoginAt: new Date().toISOString(),
-      isActive: true
-    };
+    if (error) {
+      console.error("Profile Update Error:", error);
+      throw new Error("خطا در به‌روزرسانی پایگاه داده");
+    }
 
-    const updatedUser = {
-      ...currentUser,
-      firstName: firstName.trim(),
-      lastName: lastName.trim(),
-      email: email?.trim() || null
-    };
-
-    MOCK_USERS.set(userId, updatedUser);
-
-    return NextResponse.json({
-      success: true,
-      user: updatedUser,
-      message: "اطلاعات با موفقیت به‌روزرسانی شد"
-    });
+    return NextResponse.json({ success: true, user: updatedUser, message: "اطلاعات با موفقیت به‌روزرسانی شد" });
   } catch (error) {
     console.error("Error updating profile:", error);
-    return NextResponse.json(
-      { success: false, error: "خطا در به‌روزرسانی اطلاعات" },
-      { status: 500 }
-    );
+    return NextResponse.json({ success: false, error: "خطا در به‌روزرسانی اطلاعات" }, { status: 500 });
   }
 }

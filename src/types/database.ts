@@ -135,3 +135,19 @@ export interface InternalLog {
   nextActionRequired: string | null;
   loggedAt: Date | string;
 }
+
+// ==========================================
+// 8. Saved Properties Collection (علاقه‌مندی‌ها)
+// ==========================================
+export interface SavedProperty {
+  id: string;
+  userId: string; // Reference to User.id
+  roomId: string; // Otaghak Room ID
+  roomName: string;
+  cityName: string | null;
+  stateName: string | null;
+  pricePerNight: number | null;
+  imageUrl: string | null;
+  rating: number | null;
+  savedAt: Date | string;
+}

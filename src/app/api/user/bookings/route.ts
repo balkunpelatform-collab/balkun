@@ -1,27 +1,18 @@
-// مسیر مقصد این فایل (فایل جدید): src/app/api/user/bookings/route.ts
+// مسیر: src/app/api/user/bookings/route.ts
 // این API رزروهای کاربر رو از دیتابیس می‌خونه و قانون مخفی‌سازی ۱۵ دقیقه‌ای رو روش اعمال می‌کنه.
+// شناسه کاربر از هدر امن x-balkun-user-id (تزریق‌شده توسط middleware) خوانده می‌شود.
 
-import { NextResponse } from "next/server";
+import { NextRequest, NextResponse } from "next/server";
 import { supabaseAdmin } from "@/lib/supabase-admin";
 import type { Booking } from "@/types/database";
 
-export async function GET(request: Request) {
+export async function GET(request: NextRequest) {
   try {
-    // ۱. دریافت توکن از هدر
-    const authHeader = request.headers.get("authorization");
-    if (!authHeader || !authHeader.startsWith("Bearer ")) {
-      return NextResponse.json({ success: false, error: "توکن نامعتبر است" }, { status: 401 });
-    }
-
-    const token = authHeader.split(" ")[1];
-    
-    // ۲. استخراج شناسه کاربر (در فاز ۷ اینجا از توکن JWT واقعی بازگشایی می‌شه)
-    const userId = token.replace("balkun-token-", "");
+    const userId = request.headers.get("x-balkun-user-id");
     if (!userId) {
-      return NextResponse.json({ success: false, error: "کاربر یافت نشد" }, { status: 401 });
+      return NextResponse.json({ success: false, error: "احراز هویت ناموفق" }, { status: 401 });
     }
 
-    // ۳. دریافت رزروهای کاربر از دیتابیس
     const { data: bookings, error } = await supabaseAdmin
       .from("bookings")
       .select("*")
@@ -33,19 +24,15 @@ export async function GET(request: Request) {
       throw new Error("خطا در ارتباط با پایگاه داده");
     }
 
-    // ۴. اعمال قانون تجاری فاز ۸: مخفی‌سازی رزروهای لغوشده توسط میزبان پس از ۱۵ دقیقه
+    // اعمال قانون تجاری فاز ۸: مخفی‌سازی رزروهای لغوشده توسط میزبان پس از ۱۵ دقیقه
     const now = new Date().getTime();
     const filteredBookings = (bookings as Booking[]).filter((booking) => {
-      // اگر از قبل توسط کرون‌جاب مخفی شده بود
       if (booking.isVisibleForUser === false) return false;
 
-      // بررسی داینامیک تایمر ۱۵ دقیقه
       if (booking.status === "CANCELLED_BY_HOST") {
-        const cancelTime = new Date(booking.createdAt).getTime(); // در فازهای بعد با cancelledAt جایگزین می‌شود
+        const cancelTime = new Date(booking.createdAt).getTime();
         const diffMinutes = (now - cancelTime) / (1000 * 60);
-        if (diffMinutes > 15) {
-          return false; // از دید کاربر مخفی می‌شود
-        }
+        if (diffMinutes > 15) return false;
       }
       return true;
     });

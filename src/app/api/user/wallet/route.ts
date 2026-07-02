@@ -1,92 +1,71 @@
 // مسیر: src/app/api/user/wallet/route.ts
-// API برای دریافت اطلاعات کیف پول و تراکنش‌ها
+// API دریافت اطلاعات کیف پول و تراکنش‌ها — متصل به جداول واقعی wallets/transactions.
+// شارژ واقعی کیف پول (POST) عمداً به فاز ۶ موکول شده چون به درگاه بانکی نیاز دارد.
 
 import { NextRequest, NextResponse } from "next/server";
+import { supabaseAdmin } from "@/lib/supabase-admin";
 
-// Mock Database
-const MOCK_WALLETS = new Map();
-const MOCK_TRANSACTIONS = new Map();
-
-// Helper: استخراج userId از توکن
-function getUserIdFromToken(authHeader: string | null): string | null {
-  if (!authHeader || !authHeader.startsWith("Bearer balkun-token-")) {
-    return null;
-  }
-  return authHeader.replace("Bearer balkun-token-", "");
-}
-
-// GET: دریافت اطلاعات کیف پول و تراکنش‌های اخیر
 export async function GET(req: NextRequest) {
   try {
-    const userId = getUserIdFromToken(req.headers.get("authorization"));
-
+    const userId = req.headers.get("x-balkun-user-id");
     if (!userId) {
-      return NextResponse.json(
-        { success: false, error: "احراز هویت ناموفق" },
-        { status: 401 }
-      );
+      return NextResponse.json({ success: false, error: "احراز هویت ناموفق" }, { status: 401 });
     }
 
-    // TODO: در فاز ۶ با Supabase و درگاه پرداخت
-    // const { data: walletData } = await supabase
-    //   .from('wallets')
-    //   .select('*')
-    //   .eq('user_id', userId)
-    //   .single();
-    //
-    // const { data: transactions } = await supabase
-    //   .from('transactions')
-    //   .select('*')
-    //   .eq('wallet_id', walletData.id)
-    //   .order('created_at', { ascending: false })
-    //   .limit(10);
+    let { data: wallet, error: walletError } = await supabaseAdmin
+      .from("wallets")
+      .select("*")
+      .eq("userId", userId)
+      .maybeSingle();
 
-    // Mock Data - فعلاً یک والت خالی نشان می‌دهیم
-    // در فاز ۶ این بخش کامل می‌شود
-    const mockWallet = MOCK_WALLETS.get(userId) || {
-      id: `wallet-${userId}`,
-      userId,
-      normalBalance: 0,
-      orgBalance: 0,
-      updatedAt: new Date().toISOString()
-    };
+    if (walletError) {
+      console.error("Wallet Fetch Error:", walletError);
+      throw new Error("خطا در ارتباط با پایگاه داده");
+    }
 
-    const mockTransactions = MOCK_TRANSACTIONS.get(userId) || [];
+    // خودترمیمی: اگر کاربری (مثلاً از داده‌های قدیمی تست) فاقد کیف پول بود، همین‌جا برایش ساخته می‌شود
+    if (!wallet) {
+      const { data: newWallet, error: createError } = await supabaseAdmin
+        .from("wallets")
+        .insert([{ userId }])
+        .select()
+        .single();
 
-    return NextResponse.json({
-      success: true,
-      wallet: mockWallet,
-      recentTransactions: mockTransactions
-    });
+      if (createError) {
+        console.error("Wallet Auto-Create Error:", createError);
+        throw new Error("خطا در ایجاد کیف پول");
+      }
+      wallet = newWallet;
+    }
+
+    const { data: transactions, error: txError } = await supabaseAdmin
+      .from("transactions")
+      .select("*")
+      .eq("walletId", wallet.id)
+      .order("createdAt", { ascending: false })
+      .limit(10);
+
+    if (txError) {
+      console.error("Transactions Fetch Error:", txError);
+      throw new Error("خطا در ارتباط با پایگاه داده");
+    }
+
+    return NextResponse.json({ success: true, wallet, recentTransactions: transactions ?? [] });
   } catch (error) {
     console.error("Error fetching wallet:", error);
-    return NextResponse.json(
-      { success: false, error: "خطا در دریافت اطلاعات کیف پول" },
-      { status: 500 }
-    );
+    return NextResponse.json({ success: false, error: "خطا در دریافت اطلاعات کیف پول" }, { status: 500 });
   }
 }
 
-// POST: شارژ کیف پول (فقط برای تست - در فاز ۶ با درگاه واقعی)
+// POST: شارژ کیف پول — در فاز ۶ (اتصال درگاه پرداخت) فعال می‌شود
 export async function POST(req: NextRequest) {
-  try {
-    const userId = getUserIdFromToken(req.headers.get("authorization"));
-
-    if (!userId) {
-      return NextResponse.json(
-        { success: false, error: "احراز هویت ناموفق" },
-        { status: 401 }
-      );
-    }
-
-    return NextResponse.json({
-      success: false,
-      error: "این بخش در فاز ۶ (درگاه پرداخت) فعال خواهد شد"
-    });
-  } catch (error) {
-    return NextResponse.json(
-      { success: false, error: "خطا در پردازش درخواست" },
-      { status: 500 }
-    );
+  const userId = req.headers.get("x-balkun-user-id");
+  if (!userId) {
+    return NextResponse.json({ success: false, error: "احراز هویت ناموفق" }, { status: 401 });
   }
+
+  return NextResponse.json({
+    success: false,
+    error: "شارژ کیف پول در فاز ۶ (اتصال درگاه پرداخت) فعال خواهد شد",
+  });
 }
