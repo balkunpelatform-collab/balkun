@@ -52,7 +52,7 @@ export interface Transaction {
 // ==========================================
 // 4. Bookings Collection (Otaghak Sync)
 // ==========================================
-export type BookingStatus = 
+export type BookingStatus =
   | "WAITING_FOR_HOST"
   | "WAITING_FOR_PAYMENT"
   | "PAID_CONFIRMED"
@@ -81,11 +81,17 @@ export interface Booking {
 // ==========================================
 export type TicketStatus = "NEW" | "IN_PROGRESS" | "ANSWERED" | "CLOSED";
 export type SenderType = "USER" | "ADMIN";
+export type TicketCategory =
+  | "PRE_BOOKING_QUESTION"
+  | "FINANCIAL_ISSUE"
+  | "CANCELLATION_FOLLOWUP"
+  | "OTHER";
 
 export interface Ticket {
   id: string;
   userId: string; // Reference to User.id
   subject: string;
+  category: TicketCategory;
   status: TicketStatus;
   createdAt: Date | string;
   updatedAt: Date | string;
@@ -118,10 +124,10 @@ export interface OrganizationLead {
 // ==========================================
 // 7. Internal Logs Collection (Admin Panel)
 // ==========================================
-export type LogCategory = 
-  | "PHONE_CALL_RECORD" 
-  | "TEAM_INTERNAL_TICKET" 
-  | "SYSTEM_ERROR" 
+export type LogCategory =
+  | "PHONE_CALL_RECORD"
+  | "TEAM_INTERNAL_TICKET"
+  | "SYSTEM_ERROR"
   | "SMS_REPORT";
 
 export interface InternalLog {

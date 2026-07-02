@@ -1,15 +1,16 @@
 // مسیر: src/middleware.ts
 // این فایل، خلأ امنیتی مستندشده در PHASE_8_USER_DASHBOARD.md (بخش ۳) را می‌بندد.
-// وظیفه: قبل از رسیدن درخواست به صفحه /profile یا هر API زیر /api/user و /api/booking/create،
-// کوکی نشست را اعتبارسنجی می‌کند. اگر معتبر نبود: صفحات ریدایرکت به /login می‌شوند و
-// API‌ها خطای ۴۰۱ برمی‌گردانند. اگر معتبر بود، شناسه کاربر را (که فقط از روی امضای سرور
-// قابل استخراج است، نه از ورودی کاربر) در هدر داخلی به Route Handler بعدی پاس می‌دهد.
+// وظیفه: قبل از رسیدن درخواست به صفحات محافظت‌شده (/profile, /support) یا API های
+// زیر /api/user، /api/booking/create و /api/support، کوکی نشست را اعتبارسنجی می‌کند.
+// اگر معتبر نبود: صفحات ریدایرکت به /login می‌شوند و API‌ها خطای ۴۰۱ برمی‌گردانند.
+// اگر معتبر بود، شناسه کاربر را (که فقط از روی امضای سرور قابل استخراج است، نه از
+// ورودی کاربر) در هدر داخلی به Route Handler بعدی پاس می‌دهد.
 
 import { NextResponse, type NextRequest } from "next/server";
 import { verifySessionToken, SESSION_COOKIE } from "@/lib/auth/session";
 
-const PROTECTED_PAGE_PREFIXES = ["/profile"];
-const PROTECTED_API_PREFIXES = ["/api/user", "/api/booking/create"];
+const PROTECTED_PAGE_PREFIXES = ["/profile", "/support"];
+const PROTECTED_API_PREFIXES = ["/api/user", "/api/booking/create", "/api/support"];
 
 function matchesAny(pathname: string, prefixes: string[]): boolean {
   return prefixes.some((p) => pathname === p || pathname.startsWith(`${p}/`));
@@ -52,5 +53,11 @@ export async function middleware(request: NextRequest) {
 }
 
 export const config = {
-  matcher: ["/profile/:path*", "/api/user/:path*", "/api/booking/create"],
+  matcher: [
+    "/profile/:path*",
+    "/support/:path*",
+    "/api/user/:path*",
+    "/api/booking/create",
+    "/api/support/:path*",
+  ],
 };
