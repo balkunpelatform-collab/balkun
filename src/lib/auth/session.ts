@@ -3,9 +3,13 @@
 // از این پس، تنها منبع معتبرِ «کاربر لاگین‌شده کیست» همین توکن امضاشده (JWT) است که
 // در یک کوکی HttpOnly ذخیره می‌شود — نه هیچ مقداری که از سمت کلاینت (فرانت‌اند) ارسال شود.
 // از کتابخانه jose استفاده شده چون در Edge Runtime (که Middleware نکست‌جی‌اس روی آن اجرا می‌شود) کار می‌کند.
+// 🆕 از این نسخه، نقش کاربر (role) هم در توکن حمل می‌شود تا میدلور بتواند مسیرهای /admin را
+// بدون رفت‌وبرگشت اضافه به دیتابیس، در همان لبه (Edge) کنترل کند. بررسی نهایی و معتبرِ نقش
+// برای عملیات حساس ادمین، همیشه در خودِ Route Handler از روی دیتابیس دوباره انجام می‌شود
+// (به فایل src/lib/auth/adminAuth.ts نگاه کن) — یعنی توکن فقط برای تجربه کاربری سریع است، نه تنها خط دفاعی.
 
 import { SignJWT, jwtVerify, type JWTPayload } from "jose";
-import type { UserType } from "@/types/database";
+import type { UserType, UserRole } from "@/types/database";
 
 export const SESSION_COOKIE = {
   name: "balkun_session",
@@ -16,6 +20,7 @@ export interface BalkunSessionPayload extends JWTPayload {
   userId: string;
   phoneNumber: string;
   userType: UserType;
+  role: UserRole;
 }
 
 function getSecretKey(): Uint8Array {
@@ -33,6 +38,7 @@ export async function createSessionToken(payload: {
   userId: string;
   phoneNumber: string;
   userType: UserType;
+  role: UserRole;
 }): Promise<string> {
   return new SignJWT({ ...payload })
     .setProtectedHeader({ alg: "HS256" })
@@ -50,7 +56,8 @@ export async function verifySessionToken(
     if (
       typeof payload.userId === "string" &&
       typeof payload.phoneNumber === "string" &&
-      (payload.userType === "NORMAL" || payload.userType === "ORGANIZATIONAL")
+      (payload.userType === "NORMAL" || payload.userType === "ORGANIZATIONAL") &&
+      (payload.role === "USER" || payload.role === "SUPPORT_AGENT" || payload.role === "SUPER_ADMIN")
     ) {
       return payload as BalkunSessionPayload;
     }

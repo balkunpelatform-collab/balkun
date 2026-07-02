@@ -7,6 +7,7 @@
 // 1. Users Collection
 // ==========================================
 export type UserType = "NORMAL" | "ORGANIZATIONAL";
+export type UserRole = "USER" | "SUPPORT_AGENT" | "SUPER_ADMIN";
 
 export interface User {
   id: string; // UUID
@@ -16,6 +17,7 @@ export interface User {
   email?: string | null; // اختیاری
   userType: UserType;
   organizationName: string | null; // Null if NORMAL user
+  role: UserRole; // نقش دسترسی: کاربر عادی / پشتیبان / مدیر ارشد
   joinedAt: Date | string;
   lastLoginAt: Date | string;
   isActive: boolean;
@@ -156,4 +158,20 @@ export interface SavedProperty {
   imageUrl: string | null;
   rating: number | null;
   savedAt: Date | string;
+}
+
+// ==========================================
+// 9. Admin Audit Logs Collection (شفافیت اقدامات ادمین)
+// ==========================================
+export type AdminActionType = "ROLE_CHANGE" | "WALLET_ADJUST" | "USER_STATUS_CHANGE" | "OTHER";
+
+export interface AdminAuditLog {
+  id: string;
+  adminId: string; // Reference to User.id (ادمین انجام‌دهنده)
+  actionType: AdminActionType;
+  targetUserId: string | null; // کاربری که تحت تأثیر قرار گرفته
+  description: string;
+  previousValue: string | null;
+  newValue: string | null;
+  createdAt: Date | string;
 }

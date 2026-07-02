@@ -39,7 +39,8 @@ export async function POST(request: Request) {
     const userType = orgRecord ? "ORGANIZATIONAL" : "NORMAL";
     const organizationName = orgRecord ? orgRecord.organizationName : null;
 
-    // ۴. ثبت کاربر جدید در دیتابیس
+    // ۴. ثبت کاربر جدید در دیتابیس (نقش پیش‌فرض همیشه USER است؛
+    // ارتقا به SUPPORT_AGENT/SUPER_ADMIN فقط از پنل ادمین توسط یک SUPER_ADMIN دیگر انجام می‌شود)
     const { data: newUser, error: userError } = await supabaseAdmin
       .from("users")
       .insert([{ phoneNumber, firstName, lastName, userType, organizationName }])
@@ -66,6 +67,7 @@ export async function POST(request: Request) {
       userId: newUser.id,
       phoneNumber: newUser.phoneNumber,
       userType: newUser.userType,
+      role: newUser.role,
     });
 
     const legacyClientToken = `balkun-token-${newUser.id}`;

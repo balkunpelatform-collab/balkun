@@ -38,10 +38,12 @@ export async function POST(request: Request) {
       .eq("id", user.id);
 
     // 🔐 صدور نشست امن: از این پس منبع واقعی احراز هویت، کوکی HttpOnly امضاشده (JWT) است.
+    // نقش کاربر (role) هم در توکن حمل می‌شود تا دسترسی پنل ادمین کنترل شود.
     const sessionToken = await createSessionToken({
       userId: user.id,
       phoneNumber: user.phoneNumber,
       userType: user.userType,
+      role: user.role,
     });
 
     // این مقدار صرفاً برای سازگاری با UI فعلی (Zustand authStore) نگه داشته شده

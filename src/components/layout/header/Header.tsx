@@ -1,6 +1,7 @@
-// مسیر مقصد این فایل: src/components/layout/header/Header.tsx
+// مسیر: src/components/layout/header/Header.tsx
 // این فایل را به‌طور کامل جایگزین فایل فعلی کنید
-// تغییر اصلی: کامپوننت اکنون "use client" است تا بتواند به وضعیت ورود کاربر (Zustand) گوش دهد
+// 🆕 رفع باگ: دکمه همبرگری موبایل اکنون MobileMenu.tsx را باز می‌کند (قبلاً onClick نداشت)
+// 🆕 لینک «پنل مدیریت» برای کاربرانی که role آن‌ها SUPER_ADMIN یا SUPPORT_AGENT است اضافه شد
 
 "use client";
 
@@ -8,15 +9,19 @@ import { useEffect, useRef, useState } from "react";
 import Link from "next/link";
 import Image from "next/image";
 import { useRouter } from "next/navigation";
-import { User, Menu, Bell, LogOut, Wallet } from "lucide-react";
+import { User, Menu, Bell, LogOut, Wallet, ShieldCheck } from "lucide-react";
 import { HEADER_LINKS } from "@/constants/navigation";
 import { useAuthStore } from "@/store/authStore";
+import MobileMenu from "./MobileMenu";
 
 export default function Header() {
   const router = useRouter();
   const { user, isAuthenticated, logout } = useAuthStore();
   const [menuOpen, setMenuOpen] = useState(false);
+  const [mobileMenuOpen, setMobileMenuOpen] = useState(false);
   const menuRef = useRef<HTMLDivElement>(null);
+
+  const isAdmin = user?.role === "SUPER_ADMIN" || user?.role === "SUPPORT_AGENT";
 
   // بستن منوی کاربر با کلیک بیرون از آن
   useEffect(() => {
@@ -40,7 +45,11 @@ export default function Header() {
       <div className="container mx-auto px-4 h-16 flex items-center justify-between">
 
         <div className="flex-1 flex items-center justify-start gap-4">
-          <button className="md:hidden p-2 -mr-2 text-slate-700 hover:text-balkun-cyan transition-colors">
+          <button
+            onClick={() => setMobileMenuOpen(true)}
+            className="md:hidden p-2 -mr-2 text-slate-700 hover:text-balkun-cyan transition-colors"
+            aria-label="باز کردن منو"
+          >
             <Menu className="w-6 h-6" />
           </button>
 
@@ -114,6 +123,16 @@ export default function Header() {
                     <Wallet className="w-4 h-4" />
                     کیف پول
                   </Link>
+                  {isAdmin && (
+                    <Link
+                      href="/admin"
+                      onClick={() => setMenuOpen(false)}
+                      className="flex items-center gap-2 px-4 py-2.5 text-sm font-bold text-balkun-orange hover:bg-orange-50 transition-colors"
+                    >
+                      <ShieldCheck className="w-4 h-4" />
+                      پنل مدیریت
+                    </Link>
+                  )}
                   <button
                     onClick={handleLogout}
                     className="w-full flex items-center gap-2 px-4 py-2.5 text-sm font-bold text-red-500 hover:bg-red-50 transition-colors"
@@ -136,6 +155,14 @@ export default function Header() {
         </div>
 
       </div>
+
+      <MobileMenu
+        isOpen={mobileMenuOpen}
+        onClose={() => setMobileMenuOpen(false)}
+        user={user}
+        isAuthenticated={isAuthenticated}
+        onLogout={handleLogout}
+      />
     </header>
   );
 }
