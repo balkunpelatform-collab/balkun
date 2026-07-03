@@ -1,25 +1,53 @@
-// مسیر: src/components/home/properties/PropertyList.tsx
-
 import Link from "next/link";
 import { ArrowLeft, Building2 } from "lucide-react";
 import { CATEGORIES } from "@/constants/categories";
 import { MOCK_PROPERTIES } from "@/constants/mockProperties";
+import type { MockProperty } from "@/constants/mockProperties";
 import CategorySection from "./CategorySection";
+import { supabaseAdmin } from "@/lib/supabase-admin";
 
-export default function PropertyList() {
+export default async function PropertyList() {
   // دسته سازمانی اقامتگاه نیست، پس از لیست ردیف‌های کارت‌دار کنار گذاشته می‌شود
   const propertyCategories = CATEGORIES.filter((category) => !category.isSpecial);
+
+  let realProperties: MockProperty[] = [];
+  try {
+    // گرفتن اقامتگاه‌های فعال از دیتابیس بالکن
+    const { data } = await supabaseAdmin
+      .from("accommodations")
+      .select("*")
+      .eq("status", "ACTIVE")
+      .order("createdAt", { ascending: false });
+
+    if (data) {
+      realProperties = data.map((acc) => ({
+        id: acc.id,
+        title: acc.title,
+        location: acc.location,
+        imageUrl: acc.images && acc.images.length > 0 ? acc.images[0] : "/hero1.webp",
+        rating: acc.rating || 5.0,
+        rawPrice: acc.pricePerNight,
+        features: acc.amenities || [],
+        category: acc.category,
+      }));
+    }
+  } catch (error) {
+    console.error("Error fetching real accommodations:", error);
+  }
+
+  // ادغام داده‌های واقعی دیتابیس با داده‌های تستی (Mock)
+  const allProperties = [...realProperties, ...MOCK_PROPERTIES];
 
   return (
     <div className="flex flex-col gap-2 mb-24 md:mb-16">
       {propertyCategories.map((category, index) => {
-        const properties = MOCK_PROPERTIES.filter((property) => property.category === category.id);
+        const properties = allProperties.filter((property) => property.category === category.id);
 
         return (
           <div key={category.id}>
             <CategorySection
               title={category.label}
-              image={category.image} // تغییر از icon به image
+              image={category.image}
               properties={properties}
               viewAllHref={`/search?category=${category.id}`}
               tinted={index % 2 === 1}
@@ -41,7 +69,6 @@ function CorporateBanner() {
         href="/corporate"
         className="group relative flex flex-col md:flex-row items-center justify-between gap-6 overflow-hidden rounded-[2rem] bg-balkun-navy px-6 py-8 md:px-10 md:py-10 shadow-lg shadow-balkun-navy/10"
       >
-        {/* درخشش‌های تزئینی پس‌زمینه */}
         <div className="absolute -top-10 -left-10 w-48 h-48 bg-balkun-orange/20 rounded-full blur-[80px] pointer-events-none"></div>
         <div className="absolute -bottom-16 -right-16 w-56 h-56 bg-balkun-cyan/10 rounded-full blur-[90px] pointer-events-none"></div>
 

@@ -1,5 +1,3 @@
-// مسیر: src/components/home/properties/CategorySection.tsx
-
 import Link from "next/link";
 import Image from "next/image";
 import { ArrowLeft } from "lucide-react";
@@ -8,14 +6,13 @@ import type { MockProperty } from "@/constants/mockProperties";
 
 interface CategorySectionProps {
   title: string;
-  image: string; // تغییر از icon به image
+  image: string;
   properties: MockProperty[];
   viewAllHref: string;
   tinted?: boolean;
 }
 
 export default function CategorySection({ title, image, properties, viewAllHref, tinted = false }: CategorySectionProps) {
-  // اگر برای این دسته‌بندی هیچ اقامتگاهی موجود نباشد، اصلاً سکشن رندر نمی‌شود
   if (properties.length === 0) return null;
 
   return (
@@ -23,7 +20,6 @@ export default function CategorySection({ title, image, properties, viewAllHref,
       <div className="container mx-auto px-4">
         <div className="flex items-center justify-between mb-5">
           <div className="flex items-center gap-3">
-            {/* نمایش عکس سه‌بعدی به جای آیکون */}
             <div className="relative w-10 h-10 rounded-2xl bg-balkun-cyan/10 flex items-center justify-center shrink-0">
               <Image src={image} alt={title} fill className="object-contain p-1.5 drop-shadow-sm" sizes="40px" />
             </div>
@@ -40,12 +36,12 @@ export default function CategorySection({ title, image, properties, viewAllHref,
         </div>
       </div>
 
-      {/* لیست افقی اسکرول‌شونده کارت‌ها */}
       <div className="w-full overflow-x-auto pb-2 pt-1 px-4 snap-x snap-mandatory [&::-webkit-scrollbar]:hidden" style={{ scrollbarWidth: "none" }}>
         <div className="flex gap-4 md:gap-6 w-max mx-auto md:mx-0">
           {properties.map((property) => (
             <PropertyCard
               key={property.id}
+              id={property.id}
               title={property.title}
               location={property.location}
               imageUrl={property.imageUrl}
@@ -57,7 +53,6 @@ export default function CategorySection({ title, image, properties, viewAllHref,
         </div>
       </div>
 
-      {/* دکمه مشاهده همه مخصوص موبایل (زیر کارت‌ها) */}
       <div className="flex justify-center mt-3 sm:hidden">
         <Link href={viewAllHref} className="flex items-center gap-2 text-sm font-bold text-slate-500 hover:text-balkun-cyan transition-colors">
           مشاهده همه
