@@ -1,3 +1,5 @@
+// مسیر: src/components/admin/AdminSidebar.tsx
+
 "use client";
 
 import Link from "next/link";
@@ -10,7 +12,8 @@ import {
   ScrollText, 
   LogOut, 
   ExternalLink,
-  ShieldCheck 
+  ShieldCheck,
+  Home
 } from "lucide-react";
 import { useAuthStore } from "@/store/authStore";
 import type { UserRole } from "@/types/database";
@@ -18,6 +21,7 @@ import type { UserRole } from "@/types/database";
 const ADMIN_NAV = [
   { id: "dashboard", label: "داشبورد کلان", href: "/admin", icon: LayoutDashboard, roles: ["SUPER_ADMIN"] },
   { id: "users", label: "کاربران و مالی", href: "/admin/users", icon: Users, roles: ["SUPER_ADMIN"] },
+  { id: "accommodations", label: "اقامتگاه‌های اختصاصی", href: "/admin/accommodations", icon: Home, roles: ["SUPER_ADMIN", "SUPPORT_AGENT"] },
   { id: "bookings", label: "مدیریت رزروها", href: "/admin/bookings", icon: CalendarDays, roles: ["SUPER_ADMIN", "SUPPORT_AGENT"] },
   { id: "tickets", label: "مرکز تیکتینگ", href: "/admin/tickets", icon: HeadphonesIcon, roles: ["SUPER_ADMIN", "SUPPORT_AGENT"] },
   { id: "logs", label: "لاگ‌های سیستم", href: "/admin/logs", icon: ScrollText, roles: ["SUPER_ADMIN", "SUPPORT_AGENT"] },
@@ -74,7 +78,7 @@ export default function AdminSidebar({ onClose }: { onClose?: () => void }) {
         {ADMIN_NAV.map((item) => {
           if (!item.roles.includes(user.role as UserRole)) return null;
 
-          const isActive = pathname === item.href;
+          const isActive = pathname.startsWith(item.href) && (item.href !== "/admin" || pathname === "/admin");
           const Icon = item.icon;
 
           return (

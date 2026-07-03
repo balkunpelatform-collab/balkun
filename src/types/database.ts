@@ -76,6 +76,9 @@ export interface Booking {
   totalPaidAmount: number; // MUST include 5% margin
   status: BookingStatus;
   isVisibleForUser: boolean; // 15-min visibility rule if cancelled
+  // 🆕 دلیل لغو (چه توسط ادمین، چه در آینده توسط میزبان). طبق سند فاز ۹ (بخش ۳)، ادمین‌ها باید
+  // مادام‌العمر به دلیل لغو هر رزرو دسترسی داشته باشند تا در صورت تماس مسافر پاسخگو باشند.
+  cancelReason: string | null;
   createdAt: Date | string;
 }
 
@@ -164,7 +167,18 @@ export interface SavedProperty {
 // ==========================================
 // 9. Admin Audit Logs Collection (شفافیت اقدامات ادمین)
 // ==========================================
-export type AdminActionType = "ROLE_CHANGE" | "WALLET_ADJUST" | "USER_STATUS_CHANGE" | "OTHER";
+// 🆕 BOOKING_STATUS_CHANGE و BOOKING_DELETE برای پشتیبانی از قابلیت جدید «لغو/حذف رزرو توسط
+// ادمین» در ماژول Booking CRM (src/app/admin/bookings) اضافه شدند. اگر این فایل را جایگزین
+// می‌کنید، حتماً migration مربوطه در sql/2026-07-03_admin_booking_actions.sql را هم روی
+// دیتابیس Supabase اجرا کنید، چون ستون "actionType" در جدول admin_audit_logs یک
+// CHECK constraint دارد که باید هم‌زمان به‌روزرسانی شود.
+export type AdminActionType =
+  | "ROLE_CHANGE"
+  | "WALLET_ADJUST"
+  | "USER_STATUS_CHANGE"
+  | "BOOKING_STATUS_CHANGE"
+  | "BOOKING_DELETE"
+  | "OTHER";
 
 export interface AdminAuditLog {
   id: string;
@@ -175,4 +189,44 @@ export interface AdminAuditLog {
   previousValue: string | null;
   newValue: string | null;
   createdAt: Date | string;
+}
+
+// ==========================================
+// 10. Accommodations Collection (ادمین‌ها می‌توانند اقامتگاه‌های اختصاصی خود را مدیریت کنند)
+// ==========================================
+export type AccommodationStatus = "ACTIVE" | "INACTIVE" | "PENDING_REVIEW";
+
+export interface Accommodation {
+  id: string; // UUID
+  adminId: string; // Reference to User.id (ادمین ایجادکننده)
+  title: string;
+  description: string;
+  location: string;
+  address: string;
+  pricePerNight: number;
+  rating: number;
+  maxGuests: number;
+  bedrooms: number;
+  bathrooms: number;
+  area: number;
+  amenities: string[]; // لیست امکانات
+  images: string[]; // آرایه URL تصاویر
+  category: string; // باید با id های موجود در src/constants/categories.ts یکی باشد
+  status: AccommodationStatus;
+  isFeatured: boolean;
+  createdAt: Date | string;
+  updatedAt: Date | string;
+  publishedAt: Date | string | null;
+  // فیلدهای اضافی برای مدیریت
+  contactPhone: string;
+  contactEmail: string;
+  checkInTime: string;
+  checkOutTime: string;
+  houseRules: string;
+  cancellationPolicy: string;
+  additionalFees: {
+    cleaningFee: number;
+    serviceFee: number;
+    tax: number;
+  };
 }

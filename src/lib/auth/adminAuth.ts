@@ -4,9 +4,13 @@
 // حتی وارد صفحه هم نشود؛ اما چون JWT تا ۳۰ روز معتبر است و ممکن است نقش یک ادمین در همین
 // بازه پس گرفته شود، هر Route Handler زیر مسیر /api/admin باید با این تابع، نقش را
 // «تازه، مستقیم از دیتابیس» دوباره بررسی کند. این استاندارد امنیتی Bank-grade سند راهبردی است.
+//
+// 🆕 نوع actionType دیگر به‌صورت جداگانه در همین فایل تعریف نمی‌شود، بلکه از
+// src/types/database.ts (AdminActionType) ایمپورت می‌شود تا هیچ‌وقت این فایل و تایپ اصلی
+// دیتابیس از هم عقب نیفتند (مثلاً وقتی اکشن جدیدی مثل BOOKING_DELETE اضافه می‌شود).
 
 import { supabaseAdmin } from "@/lib/supabase-admin";
-import type { UserRole } from "@/types/database";
+import type { UserRole, AdminActionType } from "@/types/database";
 
 export interface AdminContext {
   userId: string;
@@ -35,7 +39,7 @@ export async function requireAdminRole(
 // ثبت اجباری هر اقدام حساس ادمین (طبق الزام سند فاز ۹)
 export async function logAdminAction(params: {
   adminId: string;
-  actionType: "ROLE_CHANGE" | "WALLET_ADJUST" | "USER_STATUS_CHANGE" | "OTHER";
+  actionType: AdminActionType;
   targetUserId?: string | null;
   description: string;
   previousValue?: string | null;

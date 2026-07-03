@@ -1,10 +1,25 @@
 // مسیر: src/components/layout/header/MobileMenu.tsx
-// منوی کشویی (Drawer) موبایل که با دکمه همبرگری در Header.tsx باز می‌شود.
-// دلیل باگ قبلی: دکمه همبرگری هیچ onClick و هیچ کامپوننت drawer ای پشتش نداشت.
+// این فایل را به‌طور کامل جایگزین فایل فعلی کنید.
+//
+// 🐛 ریشه‌ی باگ قبلی (فقط منوی اول دیده می‌شد و بقیه زیر صفحه قایم می‌شد):
+// این کامپوننت به‌عنوان فرزند تگ <header> در Header.tsx رندر می‌شد. آن تگ <header> کلاس
+// backdrop-blur-md (یعنی CSS property به نام backdrop-filter) روی خودش دارد. طبق استاندارد
+// CSS، هر المنتی که backdrop-filter/filter/transform/perspective داشته باشد، برای فرزندان
+// position:fixed خودش یک "containing block" جدید می‌سازد. یعنی <MobileMenu /> که با
+// position:fixed کل صفحه را می‌گرفت، عملاً محدود به همان کادر کوچک هدر (حدود ۶۴ پیکسل
+// ارتفاع نوار بالای سایت) می‌شد؛ به همین دلیل فقط لبه‌ی بالایی منو (آیتم اول) قابل دیدن بود
+// و بقیه‌ی منو خارج از آن کادر و در عمل نامرئی/پشت محتوای اصلی صفحه می‌رفت. این رفتار
+// خصوصاً روی مرورگر Safari موبایل (iOS) و اکثر مرورگرهای مبتنی بر WebKit به وضوح دیده می‌شود.
+//
+// ✅ راه‌حل: به‌جای رندر شدن داخل درخت <header>، این کامپوننت را با React Portal مستقیماً
+// داخل document.body رندر می‌کنیم. این‌طوری، هیچ استایلی که در آینده به‌طور اتفاقی به هدر یا
+// هر جد دیگری اضافه شود (backdrop-blur، transform، filter، will-change و ...) دیگر روی این
+// منو تاثیری نخواهد گذاشت — چون کلاً بیرون از آن درخت DOM قرار می‌گیرد.
 
 "use client";
 
-import { useEffect } from "react";
+import { useEffect, useState } from "react";
+import { createPortal } from "react-dom";
 import Link from "next/link";
 import Image from "next/image";
 import { X, User, Wallet, LogOut, ShieldCheck } from "lucide-react";
@@ -20,6 +35,11 @@ interface MobileMenuProps {
 }
 
 export default function MobileMenu({ isOpen, onClose, user, isAuthenticated, onLogout }: MobileMenuProps) {
+  // برای جلوگیری از خطای Hydration Mismatch در Next.js: پورتال فقط بعد از mount شدن
+  // کامپوننت در مرورگر ساخته می‌شود، چون document.body در سمت سرور وجود ندارد.
+  const [mounted, setMounted] = useState(false);
+  useEffect(() => setMounted(true), []);
+
   // جلوگیری از اسکرول پشت‌زمینه وقتی منو باز است
   useEffect(() => {
     if (isOpen) {
@@ -32,25 +52,40 @@ export default function MobileMenu({ isOpen, onClose, user, isAuthenticated, onL
     };
   }, [isOpen]);
 
+  // بستن منو با کلید Esc (تجربه‌ی کاربری بهتر روی دستگاه‌هایی با کیبورد فیزیکی/تبلت)
+  useEffect(() => {
+    if (!isOpen) return;
+    const handleEscape = (event: KeyboardEvent) => {
+      if (event.key === "Escape") onClose();
+    };
+    document.addEventListener("keydown", handleEscape);
+    return () => document.removeEventListener("keydown", handleEscape);
+  }, [isOpen, onClose]);
+
   const isAdmin = user?.role === "SUPER_ADMIN" || user?.role === "SUPPORT_AGENT";
 
-  return (
+  if (!mounted) return null;
+
+  const menuContent = (
     <div
       className={`fixed inset-0 z-[60] md:hidden transition-opacity duration-300 ${
         isOpen ? "pointer-events-auto opacity-100" : "pointer-events-none opacity-0"
       }`}
       aria-hidden={!isOpen}
+      role="dialog"
+      aria-modal="true"
+      aria-label="منوی موبایل"
     >
       {/* پس‌زمینه تیره - کلیک روی آن منو را می‌بندد */}
       <div className="absolute inset-0 bg-black/40 backdrop-blur-sm" onClick={onClose} />
 
       {/* پنل کشویی از راست (چون سایت راست‌به‌چپ است) */}
       <div
-        className={`absolute top-0 right-0 h-full w-[80%] max-w-xs bg-white shadow-2xl flex flex-col transition-transform duration-300 ease-out ${
+        className={`absolute top-0 right-0 h-full max-h-screen w-[80%] max-w-xs bg-white shadow-2xl flex flex-col transition-transform duration-300 ease-out ${
           isOpen ? "translate-x-0" : "translate-x-full"
         }`}
       >
-        <div className="flex items-center justify-between px-4 h-16 border-b border-slate-100">
+        <div className="flex items-center justify-between px-4 h-16 border-b border-slate-100 shrink-0">
           <div className="relative w-10 h-10">
             <Image src="/logo.png" alt="لوگوی بالکن" fill className="object-contain" sizes="40px" />
           </div>
@@ -64,7 +99,7 @@ export default function MobileMenu({ isOpen, onClose, user, isAuthenticated, onL
         </div>
 
         {isAuthenticated && user && (
-          <div className="flex items-center gap-3 px-4 py-4 border-b border-slate-100">
+          <div className="flex items-center gap-3 px-4 py-4 border-b border-slate-100 shrink-0">
             <span className="w-10 h-10 rounded-full bg-balkun-cyan/10 text-balkun-cyan flex items-center justify-center font-black text-sm">
               {user.firstName?.charAt(0) || "ب"}
             </span>
@@ -77,7 +112,9 @@ export default function MobileMenu({ isOpen, onClose, user, isAuthenticated, onL
           </div>
         )}
 
-        <nav className="flex-1 overflow-y-auto py-2">
+        {/* 🐛→✅ همین overflow-y-auto روی بخش وسط، تضمین می‌کند حتی اگر تعداد لینک‌ها زیاد
+            شود یا صفحه‌ی گوشی کوتاه باشد، کاربر می‌تواند لینک‌های پایینی را اسکرول کرده و ببیند. */}
+        <nav className="flex-1 overflow-y-auto py-2 min-h-0">
           {HEADER_LINKS.map((link) => (
             <Link
               key={link.href}
@@ -119,7 +156,7 @@ export default function MobileMenu({ isOpen, onClose, user, isAuthenticated, onL
           )}
         </nav>
 
-        <div className="p-4 border-t border-slate-100">
+        <div className="p-4 border-t border-slate-100 shrink-0" style={{ paddingBottom: "max(1rem, env(safe-area-inset-bottom))" }}>
           {isAuthenticated ? (
             <button
               onClick={() => {
@@ -143,4 +180,6 @@ export default function MobileMenu({ isOpen, onClose, user, isAuthenticated, onL
       </div>
     </div>
   );
+
+  return createPortal(menuContent, document.body);
 }
