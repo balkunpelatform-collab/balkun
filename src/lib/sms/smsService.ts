@@ -1,7 +1,7 @@
-// مسیر مقصد این فایل (فایل جدید): src/lib/sms/smsService.ts
+// مسیر: src/lib/sms/smsService.ts
 //
 // تنها نقطه‌ی ارسال پیامک در کل پروژه. تمام بخش‌های دیگر (OTP، خوش‌آمدگویی،
-// و در فاز ۷ اطلاع‌رسانی رزرو) باید فقط از همین فایل استفاده کنند تا اتصال
+// و اطلاع‌رسانی چرخه‌ی رزرو) باید فقط از همین فایل استفاده کنند تا اتصال
 // به پنل پیامکی واقعی در یک‌جا متمرکز و قابل تعویض باشد.
 
 import { SMS_CONFIG } from "./smsConfig";
@@ -9,6 +9,8 @@ import { SMS_CONFIG } from "./smsConfig";
 /**
  * ارسال کد تایید (OTP) به شماره موبایل کاربر.
  * در حالت Mock، کد فقط در کنسول سرور چاپ می‌شود.
+ * این تابع عمداً در حالت غیر Mock خطا می‌دهد چون OTP برای جریان اصلی حیاتی است
+ * و نباید بی‌صدا نادیده گرفته شود.
  */
 export async function sendOtpSms(phoneNumber: string, code: string): Promise<void> {
   if (SMS_CONFIG.useMock) {
@@ -43,4 +45,87 @@ export async function sendWelcomeSms(
 
   // غیرحیاتی است — اگر پنل واقعی هنوز وصل نباشد، ثبت‌نام را متوقف نمی‌کنیم
   console.warn("⚠️ ارسال پیامک خوش‌آمدگویی نادیده گرفته شد (پنل پیامکی واقعی هنوز وصل نشده).");
+}
+
+/**
+ * ارسال پیامک تایید قطعی رزرو، بلافاصله پس از موفقیت پرداخت
+ * (تغییر وضعیت رزرو به PAID_CONFIRMED در api/payment/verify).
+ */
+export async function sendBookingConfirmedSms(
+  phoneNumber: string,
+  firstName: string,
+  roomName: string,
+  trackingCode: string
+): Promise<void> {
+  const message = `${firstName} عزیز، رزرو شما برای «${roomName}» با موفقیت تایید و پرداخت شد. کد پیگیری: ${trackingCode}`;
+
+  if (SMS_CONFIG.useMock) {
+    console.log(`[Balkun MOCK SMS - Booking Confirmed] به ${phoneNumber}: ${message}`);
+    return;
+  }
+
+  // غیرحیاتی است — عدم ارسال این پیامک نباید جریان مالی پرداخت را مختل کند
+  console.warn("⚠️ ارسال پیامک تایید رزرو نادیده گرفته شد (پنل پیامکی واقعی هنوز وصل نشده).");
+}
+
+/**
+ * ارسال پیامک صدور ووچر رزرو.
+ * فعلاً هم‌زمان با تایید پرداخت فراخوانی می‌شود (چون صدور ووچر واقعی از اتاقک
+ * هنوز به API متصل نیست و صفحه‌ی /voucher/[id] به‌صورت خودسرویس در دسترس است).
+ * به‌عنوان یک تابع مجزا نگه داشته شده تا وقتی اتصال واقعی اتاقک برقرار شد،
+ * بتوان آن را دقیقاً در لحظه‌ی صدور واقعی ووچر (نه لحظه‌ی پرداخت) فراخوانی کرد.
+ */
+export async function sendVoucherIssuedSms(
+  phoneNumber: string,
+  firstName: string,
+  bookingId: string
+): Promise<void> {
+  const message = `${firstName} عزیز، ووچر رزرو شما آماده شد. از بخش «رزروهای من» در پروفایل بالکن قابل مشاهده است. کد رزرو: ${bookingId.split("-")[0]}`;
+
+  if (SMS_CONFIG.useMock) {
+    console.log(`[Balkun MOCK SMS - Voucher Issued] به ${phoneNumber}: ${message}`);
+    return;
+  }
+
+  console.warn("⚠️ ارسال پیامک صدور ووچر نادیده گرفته شد (پنل پیامکی واقعی هنوز وصل نشده).");
+}
+
+/**
+ * ارسال پیامک لغو رزرو (لغو توسط مسافر یا میزبان).
+ */
+export async function sendBookingCancelledSms(
+  phoneNumber: string,
+  firstName: string,
+  roomName: string,
+  cancelledBy: "GUEST" | "HOST"
+): Promise<void> {
+  const message =
+    cancelledBy === "GUEST"
+      ? `${firstName} عزیز، رزرو شما برای «${roomName}» طبق درخواست خودتان لغو شد.`
+      : `${firstName} عزیز، متاسفانه رزرو شما برای «${roomName}» توسط میزبان لغو شد. مبلغ پرداختی به کیف پول بالکن شما بازگردانده شد.`;
+
+  if (SMS_CONFIG.useMock) {
+    console.log(`[Balkun MOCK SMS - Booking Cancelled] به ${phoneNumber}: ${message}`);
+    return;
+  }
+
+  console.warn("⚠️ ارسال پیامک لغو رزرو نادیده گرفته شد (پنل پیامکی واقعی هنوز وصل نشده).");
+}
+
+/**
+ * ارسال پیامک تایید عودت وجه به کیف پول بالکن (پس از لغو رزرو قطعی‌شده).
+ */
+export async function sendRefundSms(
+  phoneNumber: string,
+  firstName: string,
+  formattedAmount: string
+): Promise<void> {
+  const message = `${firstName} عزیز، مبلغ ${formattedAmount} تومان بابت رزرو لغوشده به کیف پول بالکن شما بازگشت داده شد.`;
+
+  if (SMS_CONFIG.useMock) {
+    console.log(`[Balkun MOCK SMS - Refund] به ${phoneNumber}: ${message}`);
+    return;
+  }
+
+  console.warn("⚠️ ارسال پیامک عودت وجه نادیده گرفته شد (پنل پیامکی واقعی هنوز وصل نشده).");
 }

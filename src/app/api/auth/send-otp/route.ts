@@ -4,6 +4,17 @@ import { NextResponse } from "next/server";
 import { createOtp } from "@/lib/otp/otpService";
 import { sendOtpSms } from "@/lib/sms/smsService";
 
+// 🔒 استخراج آی‌پی واقعی کاربر از هدرهای پروکسی (Vercel/Nginx) برای سیستم ضد اسپم فاز ۱۰
+function getClientIp(request: Request): string | null {
+  const forwardedFor = request.headers.get("x-forwarded-for");
+  if (forwardedFor) {
+    return forwardedFor.split(",")[0].trim();
+  }
+  const realIp = request.headers.get("x-real-ip");
+  if (realIp) return realIp.trim();
+  return null;
+}
+
 export async function POST(request: Request) {
   try {
     const { phoneNumber } = await request.json();
@@ -12,7 +23,8 @@ export async function POST(request: Request) {
       return NextResponse.json({ success: false, error: "شماره موبایل نامعتبر است" }, { status: 400 });
     }
 
-    const result = await createOtp(phoneNumber);
+    const ipAddress = getClientIp(request);
+    const result = await createOtp(phoneNumber, ipAddress);
 
     if (!result.success) {
       return NextResponse.json({ success: false, error: result.error }, { status: 429 });

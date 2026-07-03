@@ -1,20 +1,38 @@
 // مسیر: src/app/login/page.tsx
 // این فایل را به‌طور کامل جایگزین فایل فعلی کنید
 
+// 🟢 رفع باگ: قبلاً پس از ورود موفق، کاربر همیشه به «/» فرستاده می‌شد؛ حتی
+// وقتی میدلور او را از یک صفحه محافظت‌شده (مثلاً /admin) با پارامتر
+// ?redirect=/admin به این صفحه هدایت کرده بود. یعنی کاربر مجبور بود بعد از
+// ورود، دوباره دستی به آدرس مقصد برود. از این پس این پارامتر خوانده و
+// معتبرسنجی می‌شود تا کاربر دقیقاً به همان مسیری که قصد داشت بازگردد.
+
 "use client";
 
-import { useState } from "react";
+import { Suspense, useState } from "react";
 import Image from "next/image";
 import Link from "next/link";
-import { useRouter } from "next/navigation";
+import { useRouter, useSearchParams } from "next/navigation";
 import { ArrowRight, Phone, ShieldCheck, User as UserIcon } from "lucide-react";
 import { useAuthStore } from "@/store/authStore";
 
 type AuthStep = "PHONE_INPUT" | "OTP_INPUT" | "REGISTER_INFO";
 
-export default function LoginPage() {
+// امنیت: مقدار redirect مستقیماً از URL خوانده می‌شود، پس نباید بدون بررسی
+// به آن اعتماد کرد (جلوگیری از Open Redirect). فقط مسیرهای داخلی و نسبی
+// (شروع‌شونده با یک "/" ساده، نه "//" که می‌تواند به دامنه دیگری اشاره کند) مجازند.
+function getSafeRedirectPath(rawRedirect: string | null): string {
+  if (!rawRedirect) return "/";
+  if (!rawRedirect.startsWith("/") || rawRedirect.startsWith("//")) return "/";
+  return rawRedirect;
+}
+
+function LoginForm() {
   const router = useRouter();
+  const searchParams = useSearchParams();
   const { login } = useAuthStore();
+
+  const safeRedirect = getSafeRedirectPath(searchParams.get("redirect"));
 
   const [step, setStep] = useState<AuthStep>("PHONE_INPUT");
   const [phoneNumber, setPhoneNumber] = useState("");
@@ -76,7 +94,7 @@ export default function LoginPage() {
           setStep("REGISTER_INFO"); // کاربر جدیده، بره فرم ثبت‌نام
         } else {
           login(data.user, data.token); // کاربر قدیمیه، لاگین شد
-          router.push("/");
+          router.push(safeRedirect); // 🟢 بازگشت به مسیری که کاربر قصد داشت (نه همیشه صفحه اصلی)
         }
       } else {
         setError(data.error || "کد وارد شده نامعتبر است");
@@ -109,7 +127,7 @@ export default function LoginPage() {
 
       if (data.success) {
         login(data.user, data.token);
-        router.push("/");
+        router.push(safeRedirect); // 🟢 بازگشت به مسیری که کاربر قصد داشت (نه همیشه صفحه اصلی)
       } else {
         setError(data.error || "خطا در ثبت نام");
       }
@@ -243,5 +261,15 @@ export default function LoginPage() {
         </div>
       </div>
     </div>
+  );
+}
+
+// 🟢 useSearchParams طبق قوانین Next.js App Router باید داخل Suspense باشد
+// (وگرنه در زمان Build با خطای پری‌رندر مواجه می‌شویم).
+export default function LoginPage() {
+  return (
+    <Suspense fallback={null}>
+      <LoginForm />
+    </Suspense>
   );
 }

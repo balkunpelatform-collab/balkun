@@ -48,6 +48,7 @@ export interface Transaction {
   walletType: UserType; // NORMAL or ORGANIZATIONAL
   gatewayStatus: GatewayStatus;
   trackingCode: string | null;
+  bookingId: string | null; // Reference to Booking.id (فاز ۶ — اتصال تراکنش به رزرو، جلوگیری از Race Condition)
   createdAt: Date | string;
 }
 
