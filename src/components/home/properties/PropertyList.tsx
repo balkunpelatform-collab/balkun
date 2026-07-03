@@ -1,9 +1,4 @@
-// مسیر مقصد این فایل: src/components/home/properties/PropertyList.tsx
-// این فایل را به‌طور کامل جایگزین فایل فعلی کنید
-//
-// تغییر اصلی: به‌جای یک لیست عمومی و تکراری، اکنون هر دسته‌بندی (ویلا، کلبه، سوییت و...)
-// ردیف اختصاصی خودش را روی صفحه اصلی دارد. دسته «سازمانی» چون اقامتگاه نیست،
-// به‌جای ردیف کارت، یک بنر تبلیغاتی اختصاصی می‌گیرد.
+// مسیر: src/components/home/properties/PropertyList.tsx
 
 import Link from "next/link";
 import { ArrowLeft, Building2 } from "lucide-react";
@@ -24,7 +19,7 @@ export default function PropertyList() {
           <div key={category.id}>
             <CategorySection
               title={category.label}
-              icon={category.icon}
+              image={category.image} // تغییر از icon به image
               properties={properties}
               viewAllHref={`/search?category=${category.id}`}
               tinted={index % 2 === 1}

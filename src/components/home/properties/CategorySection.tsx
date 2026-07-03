@@ -1,19 +1,20 @@
-// مسیر مقصد این فایل (فایل جدید): src/components/home/properties/CategorySection.tsx
+// مسیر: src/components/home/properties/CategorySection.tsx
 
 import Link from "next/link";
-import { ArrowLeft, type LucideIcon } from "lucide-react";
+import Image from "next/image";
+import { ArrowLeft } from "lucide-react";
 import PropertyCard from "./PropertyCard";
 import type { MockProperty } from "@/constants/mockProperties";
 
 interface CategorySectionProps {
   title: string;
-  icon: LucideIcon;
+  image: string; // تغییر از icon به image
   properties: MockProperty[];
   viewAllHref: string;
   tinted?: boolean;
 }
 
-export default function CategorySection({ title, icon: Icon, properties, viewAllHref, tinted = false }: CategorySectionProps) {
+export default function CategorySection({ title, image, properties, viewAllHref, tinted = false }: CategorySectionProps) {
   // اگر برای این دسته‌بندی هیچ اقامتگاهی موجود نباشد، اصلاً سکشن رندر نمی‌شود
   if (properties.length === 0) return null;
 
@@ -22,8 +23,9 @@ export default function CategorySection({ title, icon: Icon, properties, viewAll
       <div className="container mx-auto px-4">
         <div className="flex items-center justify-between mb-5">
           <div className="flex items-center gap-3">
-            <div className="w-10 h-10 rounded-2xl bg-balkun-cyan/10 flex items-center justify-center text-balkun-cyan shrink-0">
-              <Icon className="w-5 h-5" strokeWidth={2} />
+            {/* نمایش عکس سه‌بعدی به جای آیکون */}
+            <div className="relative w-10 h-10 rounded-2xl bg-balkun-cyan/10 flex items-center justify-center shrink-0">
+              <Image src={image} alt={title} fill className="object-contain p-1.5 drop-shadow-sm" sizes="40px" />
             </div>
             <h2 className="text-base md:text-xl font-black text-balkun-navy leading-tight">{title}</h2>
           </div>
