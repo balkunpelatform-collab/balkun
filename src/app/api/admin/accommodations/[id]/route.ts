@@ -1,8 +1,11 @@
 // مسیر: src/app/api/admin/accommodations/[id]/route.ts
+// 🆕 فاز ۱۱ / بخش ۳: GET حالا به‌جای requireAdminRole ساده، از requireAdminTabAccess
+// با کلید "accommodations" استفاده می‌کند. PATCH و DELETE عملیات حساس هستند و
+// طبق تصمیم معماری، همچنان منحصراً برای SUPER_ADMIN باقی می‌مانند.
 
 import { NextRequest, NextResponse } from "next/server";
 import { supabaseAdmin } from "@/lib/supabase-admin";
-import { requireAdminRole } from "@/lib/auth/adminAuth";
+import { requireAdminRole, requireAdminTabAccess } from "@/lib/auth/adminAuth";
 import { CATEGORIES } from "@/constants/categories";
 
 interface RouteContext {
@@ -10,7 +13,7 @@ interface RouteContext {
 }
 
 export async function GET(request: NextRequest, { params }: RouteContext) {
-  const admin = await requireAdminRole(request, ["SUPER_ADMIN", "SUPPORT_AGENT"]);
+  const admin = await requireAdminTabAccess(request, "accommodations");
   if (!admin) return NextResponse.json({ success: false, error: "دسترسی غیرمجاز" }, { status: 403 });
 
   const { id } = await params;

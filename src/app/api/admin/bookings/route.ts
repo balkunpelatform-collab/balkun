@@ -2,11 +2,12 @@
 // GET: لیست کامل رزروها برای پنل ادمین (Booking CRM طبق بخش ۳ سند فاز ۹).
 // برخلاف api/user/bookings، اینجا قانون مخفی‌سازی ۱۵ دقیقه‌ای اعمال نمی‌شود —
 // ادمین‌ها باید مادام‌العمر به تمام رزروهای لغوشده (با دلیل) دسترسی داشته باشند.
-// دسترسی: SUPER_ADMIN و SUPPORT_AGENT هر دو مجازند (طبق بخش ۵ سند فاز ۹).
+// 🆕 فاز ۱۱ / بخش ۳: دسترسی حالا از طریق requireAdminTabAccess با کلید "bookings"
+// کنترل می‌شود؛ SUPER_ADMIN بدون قیدوشرط و SUPPORT_AGENT فقط با داشتن این دسترسی وارد می‌شود.
 
 import { NextRequest, NextResponse } from "next/server";
 import { supabaseAdmin } from "@/lib/supabase-admin";
-import { requireAdminRole } from "@/lib/auth/adminAuth";
+import { requireAdminTabAccess } from "@/lib/auth/adminAuth";
 import type { BookingStatus } from "@/types/database";
 
 const VALID_STATUSES: BookingStatus[] = [
@@ -18,7 +19,7 @@ const VALID_STATUSES: BookingStatus[] = [
 ];
 
 export async function GET(request: NextRequest) {
-  const admin = await requireAdminRole(request, ["SUPER_ADMIN", "SUPPORT_AGENT"]);
+  const admin = await requireAdminTabAccess(request, "bookings");
   if (!admin) {
     return NextResponse.json({ success: false, error: "دسترسی غیرمجاز" }, { status: 403 });
   }

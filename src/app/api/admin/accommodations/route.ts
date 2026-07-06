@@ -1,16 +1,18 @@
 // مسیر: src/app/api/admin/accommodations/route.ts
 // رفع باگ: جایگزینی پکیج خارجی uuid با متد داخلی و استاندارد crypto.randomUUID()
+// 🆕 فاز ۱۱ / بخش ۳: GET حالا به‌جای requireAdminRole ساده، از requireAdminTabAccess
+// با کلید "accommodations" استفاده می‌کند تا SUPPORT_AGENT فقط در صورت داشتن این دسترسی وارد شود.
 
 import { NextRequest, NextResponse } from "next/server";
 import { supabaseAdmin } from "@/lib/supabase-admin";
-import { requireAdminRole } from "@/lib/auth/adminAuth";
+import { requireAdminRole, requireAdminTabAccess } from "@/lib/auth/adminAuth";
 import { CATEGORIES } from "@/constants/categories";
 import { Accommodation, AccommodationStatus } from "@/types/database";
 
 const VALID_STATUSES: AccommodationStatus[] = ["ACTIVE", "INACTIVE", "PENDING_REVIEW"];
 
 export async function GET(request: NextRequest) {
-  const admin = await requireAdminRole(request, ["SUPER_ADMIN", "SUPPORT_AGENT"]);
+  const admin = await requireAdminTabAccess(request, "accommodations");
   if (!admin) {
     return NextResponse.json({ success: false, error: "دسترسی غیرمجاز" }, { status: 403 });
   }

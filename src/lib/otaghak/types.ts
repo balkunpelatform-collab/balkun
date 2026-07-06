@@ -1,3 +1,5 @@
+// مسیر: src/lib/otaghak/types.ts
+
 // ==========================================
 // احراز هویت اتاقک
 // ==========================================
@@ -47,6 +49,7 @@ export interface OtaghakSearchParams {
   person: number;
   cities?: string[];
   stateCodes?: string[];
+  category?: string; // 🆕 فاز ۱۱ بخش ۲: فیلتر بر اساس دسته‌بندی (id از src/constants/categories.ts)
 }
 
 export interface OtaghakRawSearchItem {

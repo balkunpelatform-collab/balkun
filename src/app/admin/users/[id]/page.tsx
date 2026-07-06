@@ -5,6 +5,7 @@ import { useRouter } from "next/navigation";
 import { ArrowRight, User, Wallet, ShieldCheck, Save, Loader2 } from "lucide-react";
 import { formatPrice } from "@/utils/priceCalculator";
 import { useAuthStore } from "@/store/authStore";
+import { ADMIN_TAB_KEYS, ADMIN_TAB_LABELS } from "@/constants/adminPermissions";
 
 interface UserDetail {
   id: string;
@@ -15,6 +16,7 @@ interface UserDetail {
   userType: string;
   organizationName: string | null;
   joinedAt: string;
+  permissions: string[]; // 🆕 فاز ۱۱
 }
 
 interface UserWallet {
@@ -31,7 +33,7 @@ export default function AdminUserDetailPage({ params }: { params: Promise<{ id: 
   const [user, setUser] = useState<UserDetail | null>(null);
   const [wallet, setWallet] = useState<UserWallet | null>(null);
   const [isLoading, setIsLoading] = useState(true);
-  
+
   // فرم تنظیمات نقش
   const [selectedRole, setSelectedRole] = useState("");
   const [isUpdatingRole, setIsUpdatingRole] = useState(false);
@@ -40,6 +42,10 @@ export default function AdminUserDetailPage({ params }: { params: Promise<{ id: 
   const [userType, setUserType] = useState("");
   const [orgName, setOrgName] = useState("");
   const [isUpdatingType, setIsUpdatingType] = useState(false);
+
+  // 🆕 فرم دسترسی تب‌به‌تب پنل (فاز ۱۱، بخش ۳)
+  const [selectedPermissions, setSelectedPermissions] = useState<string[]>([]);
+  const [isUpdatingPermissions, setIsUpdatingPermissions] = useState(false);
 
   // فرم شارژ دستی
   const [adjustAmount, setAdjustAmount] = useState("");
@@ -52,6 +58,7 @@ export default function AdminUserDetailPage({ params }: { params: Promise<{ id: 
 
   useEffect(() => {
     fetchUserDetails();
+    // eslint-disable-next-line react-hooks/exhaustive-deps
   }, [userId]);
 
   const fetchUserDetails = async () => {
@@ -64,6 +71,7 @@ export default function AdminUserDetailPage({ params }: { params: Promise<{ id: 
         setSelectedRole(data.user.role);
         setUserType(data.user.userType);
         setOrgName(data.user.organizationName || "");
+        setSelectedPermissions(data.user.permissions || []);
       }
     } catch (error) {
       console.error("Fetch user detail error", error);
@@ -87,8 +95,13 @@ export default function AdminUserDetailPage({ params }: { params: Promise<{ id: 
         body: JSON.stringify({ role: selectedRole }),
       });
       const data = await res.json();
-      if (data.success) showMessage("نقش کاربر با موفقیت تغییر کرد", "success");
-      else showMessage(data.error, "error");
+      if (data.success) {
+        showMessage("نقش کاربر با موفقیت تغییر کرد", "success");
+        // 🆕 رفرش اطلاعات کاربر تا بخش «دسترسی تب‌ها» بلافاصله بر اساس نقش جدید نمایش/مخفی شود
+        fetchUserDetails();
+      } else {
+        showMessage(data.error, "error");
+      }
     } catch {
       showMessage("خطا در ارتباط با سرور", "error");
     } finally {
@@ -112,6 +125,37 @@ export default function AdminUserDetailPage({ params }: { params: Promise<{ id: 
       showMessage("خطا در ارتباط با سرور", "error");
     } finally {
       setIsUpdatingType(false);
+    }
+  };
+
+  // 🆕 تغییر وضعیت یک چک‌باکس تب (بدون ذخیره فوری — فقط state محلی)
+  const handleTogglePermission = (tabKey: string) => {
+    setSelectedPermissions((prev) =>
+      prev.includes(tabKey) ? prev.filter((p) => p !== tabKey) : [...prev, tabKey]
+    );
+  };
+
+  // 🆕 ذخیره دسترسی‌های تب انتخاب‌شده
+  const handleUpdatePermissions = async () => {
+    if (!isSuperAdmin) return;
+    setIsUpdatingPermissions(true);
+    try {
+      const res = await fetch(`/api/admin/users/${userId}/permissions`, {
+        method: "PATCH",
+        headers: { "Content-Type": "application/json" },
+        body: JSON.stringify({ permissions: selectedPermissions }),
+      });
+      const data = await res.json();
+      if (data.success) {
+        showMessage("دسترسی‌های کاربر با موفقیت به‌روزرسانی شد", "success");
+        setUser((prev) => (prev ? { ...prev, permissions: data.permissions } : prev));
+      } else {
+        showMessage(data.error, "error");
+      }
+    } catch {
+      showMessage("خطا در ارتباط با سرور", "error");
+    } finally {
+      setIsUpdatingPermissions(false);
     }
   };
 
@@ -164,9 +208,13 @@ export default function AdminUserDetailPage({ params }: { params: Promise<{ id: 
 
   if (!user) return <div className="text-center font-bold text-red-500 py-20">کاربر یافت نشد</div>;
 
+  // 🆕 آیا چک‌باکس‌های دسترسی نسبت به مقدار ذخیره‌شده تغییر کرده‌اند؟
+  const permissionsChanged =
+    JSON.stringify([...selectedPermissions].sort()) !== JSON.stringify([...(user.permissions || [])].sort());
+
   return (
     <div className="flex flex-col gap-6 pb-10">
-      
+
       {/* Header */}
       <div className="flex items-center gap-4 border-b border-slate-200 pb-4">
         <button onClick={() => router.back()} className="p-2 bg-white rounded-xl border border-slate-200 hover:bg-slate-50">
@@ -187,7 +235,7 @@ export default function AdminUserDetailPage({ params }: { params: Promise<{ id: 
       )}
 
       <div className="grid grid-cols-1 lg:grid-cols-2 gap-6">
-        
+
         {/* مدیریت دسترسی و نوع حساب (فقط سوپر ادمین) */}
         <div className="flex flex-col gap-6">
           <div className="bg-white rounded-2xl p-6 border border-slate-100 shadow-sm flex flex-col gap-4">
@@ -197,8 +245,8 @@ export default function AdminUserDetailPage({ params }: { params: Promise<{ id: 
             </h2>
             <div className="flex flex-col gap-2">
               <label className="text-sm font-bold text-slate-600">نقش در سیستم</label>
-              <select 
-                value={selectedRole} 
+              <select
+                value={selectedRole}
                 onChange={(e) => setSelectedRole(e.target.value)}
                 disabled={!isSuperAdmin}
                 className="bg-slate-50 border border-slate-200 rounded-xl px-4 py-3 text-sm font-bold focus:border-balkun-cyan outline-none"
@@ -223,8 +271,8 @@ export default function AdminUserDetailPage({ params }: { params: Promise<{ id: 
             </h2>
             <div className="flex flex-col gap-2">
               <label className="text-sm font-bold text-slate-600">نوع کاربری</label>
-              <select 
-                value={userType} 
+              <select
+                value={userType}
                 onChange={(e) => setUserType(e.target.value)}
                 disabled={!isSuperAdmin}
                 className="bg-slate-50 border border-slate-200 rounded-xl px-4 py-3 text-sm font-bold focus:border-balkun-cyan outline-none"
@@ -236,9 +284,9 @@ export default function AdminUserDetailPage({ params }: { params: Promise<{ id: 
             {userType === "ORGANIZATIONAL" && (
               <div className="flex flex-col gap-2">
                 <label className="text-sm font-bold text-slate-600">نام سازمان</label>
-                <input 
-                  type="text" 
-                  value={orgName} 
+                <input
+                  type="text"
+                  value={orgName}
                   onChange={(e) => setOrgName(e.target.value)}
                   disabled={!isSuperAdmin}
                   placeholder="مثلاً: شرکت همراه اول"
@@ -253,6 +301,62 @@ export default function AdminUserDetailPage({ params }: { params: Promise<{ id: 
               </button>
             )}
           </div>
+
+          {/* 🆕 دسترسی به تب‌های پنل مدیریت (فاز ۱۱، بخش ۳) */}
+          {(user.role === "SUPPORT_AGENT" || user.role === "SUPER_ADMIN") && (
+            <div className="bg-white rounded-2xl p-6 border border-slate-100 shadow-sm flex flex-col gap-4">
+              <h2 className="text-lg font-black text-slate-800 flex items-center gap-2 border-b border-slate-100 pb-3">
+                <ShieldCheck className="w-5 h-5 text-balkun-cyan" />
+                دسترسی به تب‌های پنل
+              </h2>
+
+              {user.role === "SUPER_ADMIN" ? (
+                <div className="bg-slate-50 text-slate-600 p-4 rounded-xl text-sm font-bold">
+                  این کاربر «مدیر ارشد» است و مستقل از این تنظیمات، همیشه به تمام تب‌های پنل دسترسی کامل دارد.
+                </div>
+              ) : (
+                <>
+                  {!isSuperAdmin && (
+                    <div className="bg-orange-50 text-orange-700 p-3 rounded-xl text-xs font-bold text-center">
+                      فقط مدیر ارشد می‌تواند دسترسی تب‌ها را تغییر دهد.
+                    </div>
+                  )}
+                  <div className="grid grid-cols-1 sm:grid-cols-2 gap-3">
+                    {ADMIN_TAB_KEYS.map((tabKey) => (
+                      <label
+                        key={tabKey}
+                        className={`flex items-center gap-3 px-4 py-3 rounded-xl border text-sm font-bold transition-colors ${
+                          selectedPermissions.includes(tabKey)
+                            ? "bg-balkun-cyan/10 border-balkun-cyan text-balkun-navy"
+                            : "bg-slate-50 border-slate-200 text-slate-500"
+                        } ${isSuperAdmin ? "cursor-pointer" : "opacity-60 cursor-not-allowed"}`}
+                      >
+                        <input
+                          type="checkbox"
+                          checked={selectedPermissions.includes(tabKey)}
+                          disabled={!isSuperAdmin}
+                          onChange={() => handleTogglePermission(tabKey)}
+                          className="w-4 h-4 accent-balkun-cyan"
+                        />
+                        {ADMIN_TAB_LABELS[tabKey]}
+                      </label>
+                    ))}
+                  </div>
+
+                  {isSuperAdmin && permissionsChanged && (
+                    <button
+                      onClick={handleUpdatePermissions}
+                      disabled={isUpdatingPermissions}
+                      className="bg-balkun-cyan text-white rounded-xl py-3 font-bold text-sm hover:bg-balkun-cyan-dark flex justify-center items-center gap-2 mt-2"
+                    >
+                      {isUpdatingPermissions ? <Loader2 className="w-4 h-4 animate-spin" /> : <Save className="w-4 h-4" />}
+                      ذخیره دسترسی‌های تب‌ها
+                    </button>
+                  )}
+                </>
+              )}
+            </div>
+          )}
         </div>
 
         {/* مدیریت کیف پول و مالی (فقط سوپر ادمین) */}
@@ -261,7 +365,7 @@ export default function AdminUserDetailPage({ params }: { params: Promise<{ id: 
             <Wallet className="w-5 h-5 text-balkun-yellow" />
             کیف پول و عملیات دستی
           </h2>
-          
+
           <div className="grid grid-cols-2 gap-4 mb-4">
             <div className="bg-slate-50 rounded-xl p-4 border border-slate-100 flex flex-col gap-1">
                <span className="text-xs font-bold text-slate-500">موجودی عادی</span>
@@ -280,7 +384,7 @@ export default function AdminUserDetailPage({ params }: { params: Promise<{ id: 
           ) : (
             <div className="flex flex-col gap-4 bg-slate-50 p-5 rounded-2xl border border-slate-200">
               <h3 className="font-bold text-sm text-slate-700 mb-2">اصلاح دستی موجودی (ویژه پشتیبانی)</h3>
-              
+
               <div className="grid grid-cols-2 gap-3">
                 <select value={adjustWalletType} onChange={(e) => setAdjustWalletType(e.target.value)} className="bg-white border border-slate-200 rounded-xl px-3 py-2 text-sm font-bold focus:border-balkun-cyan outline-none">
                   <option value="NORMAL">کیف پول عادی</option>
@@ -294,10 +398,10 @@ export default function AdminUserDetailPage({ params }: { params: Promise<{ id: 
 
               <div className="flex flex-col gap-1">
                 <label className="text-xs font-bold text-slate-500">مبلغ (تومان)</label>
-                <input 
-                  type="text" 
+                <input
+                  type="text"
                   inputMode="numeric"
-                  value={adjustAmount} 
+                  value={adjustAmount}
                   onChange={(e) => setAdjustAmount(e.target.value.replace(/\D/g, ""))}
                   placeholder="مثلاً: 100000"
                   className="bg-white border border-slate-200 rounded-xl px-4 py-2.5 text-sm font-bold focus:border-balkun-cyan outline-none dir-ltr"
@@ -306,8 +410,8 @@ export default function AdminUserDetailPage({ params }: { params: Promise<{ id: 
 
               <div className="flex flex-col gap-1">
                 <label className="text-xs font-bold text-slate-500">دلیل موجه (در لاگ سیستم ثبت می‌شود)</label>
-                <textarea 
-                  value={adjustReason} 
+                <textarea
+                  value={adjustReason}
                   onChange={(e) => setAdjustReason(e.target.value)}
                   placeholder="دلیل شارژ یا کسر وجه را به صورت کامل بنویسید..."
                   rows={2}
@@ -315,8 +419,8 @@ export default function AdminUserDetailPage({ params }: { params: Promise<{ id: 
                 />
               </div>
 
-              <button 
-                onClick={handleWalletAdjust} 
+              <button
+                onClick={handleWalletAdjust}
                 disabled={isAdjusting || !adjustAmount || adjustReason.trim().length < 5}
                 className="w-full bg-slate-800 text-white rounded-xl py-3 font-bold text-sm hover:bg-slate-900 flex justify-center items-center gap-2 mt-2 disabled:opacity-50"
               >

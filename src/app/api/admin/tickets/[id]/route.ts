@@ -2,10 +2,12 @@
 // جزئیات یک تیکت برای ادمین + پاسخ‌دهی + بستن تیکت.
 // برخلاف api/support/tickets/[id]/route.ts (نسخه کاربر)، اینجا مالکیت تیکت چک نمی‌شود
 // چون ادمین باید به تیکت تمام کاربران دسترسی داشته باشد.
+// 🆕 فاز ۱۱ / بخش ۳: هر سه تابع حالا از طریق requireAdminTabAccess با کلید "tickets"
+// کنترل می‌شوند؛ SUPER_ADMIN بدون قیدوشرط و SUPPORT_AGENT فقط با داشتن این دسترسی وارد می‌شود.
 
 import { NextRequest, NextResponse } from "next/server";
 import { supabaseAdmin } from "@/lib/supabase-admin";
-import { requireAdminRole } from "@/lib/auth/adminAuth";
+import { requireAdminTabAccess } from "@/lib/auth/adminAuth";
 
 interface RouteContext {
   params: Promise<{ id: string }>;
@@ -13,7 +15,7 @@ interface RouteContext {
 
 // GET: دریافت جزئیات تیکت + تاریخچه پیام‌ها + اطلاعات مهمان
 export async function GET(request: NextRequest, { params }: RouteContext) {
-  const admin = await requireAdminRole(request, ["SUPER_ADMIN", "SUPPORT_AGENT"]);
+  const admin = await requireAdminTabAccess(request, "tickets");
   if (!admin) {
     return NextResponse.json({ success: false, error: "دسترسی غیرمجاز" }, { status: 403 });
   }
@@ -49,7 +51,7 @@ export async function GET(request: NextRequest, { params }: RouteContext) {
 
 // POST: ثبت پاسخ ادمین به تیکت — وضعیت تیکت به ANSWERED تغییر می‌کند
 export async function POST(request: NextRequest, { params }: RouteContext) {
-  const admin = await requireAdminRole(request, ["SUPER_ADMIN", "SUPPORT_AGENT"]);
+  const admin = await requireAdminTabAccess(request, "tickets");
   if (!admin) {
     return NextResponse.json({ success: false, error: "دسترسی غیرمجاز" }, { status: 403 });
   }
@@ -100,7 +102,7 @@ export async function POST(request: NextRequest, { params }: RouteContext) {
 
 // PATCH: بستن تیکت توسط ادمین
 export async function PATCH(request: NextRequest, { params }: RouteContext) {
-  const admin = await requireAdminRole(request, ["SUPER_ADMIN", "SUPPORT_AGENT"]);
+  const admin = await requireAdminTabAccess(request, "tickets");
   if (!admin) {
     return NextResponse.json({ success: false, error: "دسترسی غیرمجاز" }, { status: 403 });
   }

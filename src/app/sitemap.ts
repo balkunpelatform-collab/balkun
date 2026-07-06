@@ -1,10 +1,9 @@
 import { MetadataRoute } from 'next';
+import { getAllPublishedSlugsForSitemap } from '@/lib/blog/blogService';
 
-export default function sitemap(): MetadataRoute.Sitemap {
+export default async function sitemap(): Promise<MetadataRoute.Sitemap> {
   const baseUrl = process.env.NEXT_PUBLIC_SITE_URL || 'https://balkun.com';
 
-  // در حالت واقعی، اینجا باید لیست تمام ID اقامتگاه‌ها را از دیتابیس/API بگیریم
-  // فعلاً چند ID نمونه (Mock) برای ایندکس اولیه قرار می‌دهیم
   const mockRoomIds = ["1", "2", "3", "4", "5", "1001", "1002"];
 
   const roomUrls = mockRoomIds.map((id) => ({
@@ -12,6 +11,15 @@ export default function sitemap(): MetadataRoute.Sitemap {
     lastModified: new Date(),
     changeFrequency: 'daily' as const,
     priority: 0.8,
+  }));
+
+  // 🆕 فاز ۱۱ / بخش ۴: پست‌های منتشرشده‌ی بلاگ هم به نقشه سایت اضافه می‌شوند
+  const blogPosts = await getAllPublishedSlugsForSitemap();
+  const blogUrls = blogPosts.map((post) => ({
+    url: `${baseUrl}/blog/${post.slug}`,
+    lastModified: new Date(post.updatedAt),
+    changeFrequency: 'weekly' as const,
+    priority: 0.6,
   }));
 
   return [
@@ -33,6 +41,13 @@ export default function sitemap(): MetadataRoute.Sitemap {
       changeFrequency: 'monthly',
       priority: 0.7,
     },
+    {
+      url: `${baseUrl}/blog`,
+      lastModified: new Date(),
+      changeFrequency: 'daily',
+      priority: 0.7,
+    },
     ...roomUrls,
+    ...blogUrls,
   ];
 }

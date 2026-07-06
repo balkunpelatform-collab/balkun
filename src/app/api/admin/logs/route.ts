@@ -1,10 +1,11 @@
 // مسیر: src/app/api/admin/logs/route.ts
 // سیستم لاگ داخلی و یادداشت انتقال شیفت پشتیبانی طبق بخش ۴ سند فاز ۹.
-// دسترسی: SUPER_ADMIN و SUPPORT_AGENT هر دو مجازند (ثبت و مشاهده لاگ‌های شیفت).
+// 🆕 فاز ۱۱ / بخش ۳: هر دو تابع حالا از طریق requireAdminTabAccess با کلید "logs"
+// کنترل می‌شوند؛ SUPER_ADMIN بدون قیدوشرط و SUPPORT_AGENT فقط با داشتن این دسترسی وارد می‌شود.
 
 import { NextRequest, NextResponse } from "next/server";
 import { supabaseAdmin } from "@/lib/supabase-admin";
-import { requireAdminRole } from "@/lib/auth/adminAuth";
+import { requireAdminTabAccess } from "@/lib/auth/adminAuth";
 import type { LogCategory } from "@/types/database";
 
 const VALID_CATEGORIES: LogCategory[] = [
@@ -16,7 +17,7 @@ const VALID_CATEGORIES: LogCategory[] = [
 
 // GET: لیست لاگ‌های داخلی، جدیدترین‌ها بالا (فیلتر اختیاری بر اساس دسته‌بندی یا کاربر هدف)
 export async function GET(request: NextRequest) {
-  const admin = await requireAdminRole(request, ["SUPER_ADMIN", "SUPPORT_AGENT"]);
+  const admin = await requireAdminTabAccess(request, "logs");
   if (!admin) {
     return NextResponse.json({ success: false, error: "دسترسی غیرمجاز" }, { status: 403 });
   }
@@ -58,7 +59,7 @@ export async function GET(request: NextRequest) {
 
 // POST: ثبت لاگ داخلی جدید (تماس تلفنی، خطای سیستمی، یادداشت انتقال شیفت و ...)
 export async function POST(request: NextRequest) {
-  const admin = await requireAdminRole(request, ["SUPER_ADMIN", "SUPPORT_AGENT"]);
+  const admin = await requireAdminTabAccess(request, "logs");
   if (!admin) {
     return NextResponse.json({ success: false, error: "دسترسی غیرمجاز" }, { status: 403 });
   }

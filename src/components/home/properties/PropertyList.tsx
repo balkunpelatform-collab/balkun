@@ -35,13 +35,15 @@ export default async function PropertyList() {
     console.error("Error fetching real accommodations:", error);
   }
 
-  // ادغام داده‌های واقعی دیتابیس با داده‌های تستی (Mock)
-  const allProperties = [...realProperties, ...MOCK_PROPERTIES];
-
   return (
     <div className="flex flex-col gap-2 mb-24 md:mb-16">
       {propertyCategories.map((category, index) => {
-        const properties = allProperties.filter((property) => property.category === category.id);
+        // 🆕 فاز ۱۱ / بخش ۵ (تصمیم محصولی نهایی شد):
+        // اگر حداقل یک اقامتگاه واقعی در این دسته‌بندی وجود داشته باشد،
+        // آیتم‌های موک/تستی برای همان دسته‌بندی اصلاً نمایش داده نمی‌شوند.
+        const realForCategory = realProperties.filter((property) => property.category === category.id);
+        const mockForCategory = MOCK_PROPERTIES.filter((property) => property.category === category.id);
+        const properties = realForCategory.length > 0 ? realForCategory : mockForCategory;
 
         return (
           <div key={category.id}>

@@ -18,6 +18,7 @@ export interface User {
   userType: UserType;
   organizationName: string | null; // Null if NORMAL user
   role: UserRole; // نقش دسترسی: کاربر عادی / پشتیبان / مدیر ارشد
+  permissions?: string[] | null;
   joinedAt: Date | string;
   lastLoginAt: Date | string;
   isActive: boolean;
@@ -48,7 +49,7 @@ export interface Transaction {
   walletType: UserType; // NORMAL or ORGANIZATIONAL
   gatewayStatus: GatewayStatus;
   trackingCode: string | null;
-  bookingId: string | null; // Reference to Booking.id (فاز ۶ — اتصال تراکنش به رزرو، جلوگیری از Race Condition)
+  bookingId: string | null;
   createdAt: Date | string;
 }
 
@@ -63,21 +64,19 @@ export type BookingStatus =
   | "CANCELLED_BY_GUEST";
 
 export interface Booking {
-  id: string; // Internal Balkun Booking ID
-  otaghakBookingId: string | null; // Reference ID in Otaghak
-  userId: string; // Reference to User.id
-  roomId: string; // Otaghak Room ID
+  id: string;
+  otaghakBookingId: string | null;
+  userId: string;
+  roomId: string;
   roomName: string;
   checkInDate: Date | string;
   checkOutDate: Date | string;
   basePersonCount: number;
   extraPersonCount: number;
-  nationalCode: string; // کد ملی مهمان اصلی - الزامی برای ثبت در اتاقک
-  totalPaidAmount: number; // MUST include 5% margin
+  nationalCode: string;
+  totalPaidAmount: number;
   status: BookingStatus;
-  isVisibleForUser: boolean; // 15-min visibility rule if cancelled
-  // 🆕 دلیل لغو (چه توسط ادمین، چه در آینده توسط میزبان). طبق سند فاز ۹ (بخش ۳)، ادمین‌ها باید
-  // مادام‌العمر به دلیل لغو هر رزرو دسترسی داشته باشند تا در صورت تماس مسافر پاسخگو باشند.
+  isVisibleForUser: boolean;
   cancelReason: string | null;
   createdAt: Date | string;
 }
@@ -95,7 +94,7 @@ export type TicketCategory =
 
 export interface Ticket {
   id: string;
-  userId: string; // Reference to User.id
+  userId: string;
   subject: string;
   category: TicketCategory;
   status: TicketStatus;
@@ -105,7 +104,7 @@ export interface Ticket {
 
 export interface TicketMessage {
   id: string;
-  ticketId: string; // Reference to Ticket.id
+  ticketId: string;
   senderType: SenderType;
   messageText: string;
   sentAt: Date | string;
@@ -139,8 +138,8 @@ export type LogCategory =
 export interface InternalLog {
   id: string;
   logCategory: LogCategory;
-  creatorId: string; // Reference to Admin ID
-  targetUserId: string | null; // Optional reference to User.id
+  creatorId: string;
+  targetUserId: string | null;
   subject: string;
   details: string;
   actionTaken: string;
@@ -153,8 +152,8 @@ export interface InternalLog {
 // ==========================================
 export interface SavedProperty {
   id: string;
-  userId: string; // Reference to User.id
-  roomId: string; // Otaghak Room ID
+  userId: string;
+  roomId: string;
   roomName: string;
   cityName: string | null;
   stateName: string | null;
@@ -167,24 +166,24 @@ export interface SavedProperty {
 // ==========================================
 // 9. Admin Audit Logs Collection (شفافیت اقدامات ادمین)
 // ==========================================
-// 🆕 BOOKING_STATUS_CHANGE و BOOKING_DELETE برای پشتیبانی از قابلیت جدید «لغو/حذف رزرو توسط
-// ادمین» در ماژول Booking CRM (src/app/admin/bookings) اضافه شدند. اگر این فایل را جایگزین
-// می‌کنید، حتماً migration مربوطه در sql/2026-07-03_admin_booking_actions.sql را هم روی
-// دیتابیس Supabase اجرا کنید، چون ستون "actionType" در جدول admin_audit_logs یک
-// CHECK constraint دارد که باید هم‌زمان به‌روزرسانی شود.
+// 🆕 BLOG_POST_CHANGE برای عملیات مدیریت بلاگ (فاز ۱۱، بخش ۴) اضافه شد.
+// اگر این فایل را جایگزین می‌کنید، حتماً migration مربوطه (بخش ۱۴ سند
+// DATABASE_SQL_LOG.md) را هم روی دیتابیس Supabase اجرا کنید.
 export type AdminActionType =
   | "ROLE_CHANGE"
   | "WALLET_ADJUST"
   | "USER_STATUS_CHANGE"
   | "BOOKING_STATUS_CHANGE"
   | "BOOKING_DELETE"
+  | "PERMISSIONS_CHANGE"
+  | "BLOG_POST_CHANGE"
   | "OTHER";
 
 export interface AdminAuditLog {
   id: string;
-  adminId: string; // Reference to User.id (ادمین انجام‌دهنده)
+  adminId: string;
   actionType: AdminActionType;
-  targetUserId: string | null; // کاربری که تحت تأثیر قرار گرفته
+  targetUserId: string | null;
   description: string;
   previousValue: string | null;
   newValue: string | null;
@@ -192,13 +191,13 @@ export interface AdminAuditLog {
 }
 
 // ==========================================
-// 10. Accommodations Collection (ادمین‌ها می‌توانند اقامتگاه‌های اختصاصی خود را مدیریت کنند)
+// 10. Accommodations Collection
 // ==========================================
 export type AccommodationStatus = "ACTIVE" | "INACTIVE" | "PENDING_REVIEW";
 
 export interface Accommodation {
-  id: string; // UUID
-  adminId: string; // Reference to User.id (ادمین ایجادکننده)
+  id: string;
+  adminId: string;
   title: string;
   description: string;
   location: string;
@@ -209,15 +208,14 @@ export interface Accommodation {
   bedrooms: number;
   bathrooms: number;
   area: number;
-  amenities: string[]; // لیست امکانات
-  images: string[]; // آرایه URL تصاویر
-  category: string; // باید با id های موجود در src/constants/categories.ts یکی باشد
+  amenities: string[];
+  images: string[];
+  category: string;
   status: AccommodationStatus;
   isFeatured: boolean;
   createdAt: Date | string;
   updatedAt: Date | string;
   publishedAt: Date | string | null;
-  // فیلدهای اضافی برای مدیریت
   contactPhone: string;
   contactEmail: string;
   checkInTime: string;
@@ -229,4 +227,27 @@ export interface Accommodation {
     serviceFee: number;
     tax: number;
   };
+}
+
+// ==========================================
+// 11. Blog Posts Collection (بخش ۴ فاز ۱۱ — بلاگ)
+// ==========================================
+export type BlogPostStatus = "DRAFT" | "PUBLISHED";
+
+export interface BlogPost {
+  id: string;
+  title: string;
+  slug: string;
+  excerpt: string;
+  content: string;
+  coverImage: string | null;
+  category: string; // باید با id های موجود در src/constants/blogCategories.ts یکی باشد
+  tags: string[];
+  status: BlogPostStatus;
+  authorId: string; // Reference to User.id
+  metaTitle: string | null;
+  metaDescription: string | null;
+  createdAt: Date | string;
+  updatedAt: Date | string;
+  publishedAt: Date | string | null;
 }

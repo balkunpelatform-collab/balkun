@@ -1,30 +1,44 @@
 // مسیر: src/components/admin/AdminSidebar.tsx
+// 🆕 فاز ۱۱ / بخش ۴: آیتم «مدیریت بلاگ» با tabKey="blog" اضافه شد.
 
 "use client";
 
 import Link from "next/link";
 import { usePathname, useRouter } from "next/navigation";
-import { 
-  LayoutDashboard, 
-  Users, 
-  CalendarDays, 
-  HeadphonesIcon, 
-  ScrollText, 
-  LogOut, 
+import {
+  LayoutDashboard,
+  Users,
+  CalendarDays,
+  HeadphonesIcon,
+  ScrollText,
+  LogOut,
   ExternalLink,
   ShieldCheck,
-  Home
+  Home,
+  Newspaper,
+  type LucideIcon,
 } from "lucide-react";
 import { useAuthStore } from "@/store/authStore";
 import type { UserRole } from "@/types/database";
+import type { AdminTabKey } from "@/constants/adminPermissions";
 
-const ADMIN_NAV = [
+interface AdminNavItem {
+  id: string;
+  label: string;
+  href: string;
+  icon: LucideIcon;
+  roles: UserRole[];
+  tabKey?: AdminTabKey;
+}
+
+const ADMIN_NAV: AdminNavItem[] = [
   { id: "dashboard", label: "داشبورد کلان", href: "/admin", icon: LayoutDashboard, roles: ["SUPER_ADMIN"] },
   { id: "users", label: "کاربران و مالی", href: "/admin/users", icon: Users, roles: ["SUPER_ADMIN"] },
-  { id: "accommodations", label: "اقامتگاه‌های اختصاصی", href: "/admin/accommodations", icon: Home, roles: ["SUPER_ADMIN", "SUPPORT_AGENT"] },
-  { id: "bookings", label: "مدیریت رزروها", href: "/admin/bookings", icon: CalendarDays, roles: ["SUPER_ADMIN", "SUPPORT_AGENT"] },
-  { id: "tickets", label: "مرکز تیکتینگ", href: "/admin/tickets", icon: HeadphonesIcon, roles: ["SUPER_ADMIN", "SUPPORT_AGENT"] },
-  { id: "logs", label: "لاگ‌های سیستم", href: "/admin/logs", icon: ScrollText, roles: ["SUPER_ADMIN", "SUPPORT_AGENT"] },
+  { id: "accommodations", label: "اقامتگاه‌های اختصاصی", href: "/admin/accommodations", icon: Home, roles: ["SUPER_ADMIN", "SUPPORT_AGENT"], tabKey: "accommodations" },
+  { id: "blog", label: "مدیریت بلاگ", href: "/admin/blog", icon: Newspaper, roles: ["SUPER_ADMIN", "SUPPORT_AGENT"], tabKey: "blog" },
+  { id: "bookings", label: "مدیریت رزروها", href: "/admin/bookings", icon: CalendarDays, roles: ["SUPER_ADMIN", "SUPPORT_AGENT"], tabKey: "bookings" },
+  { id: "tickets", label: "مرکز تیکتینگ", href: "/admin/tickets", icon: HeadphonesIcon, roles: ["SUPER_ADMIN", "SUPPORT_AGENT"], tabKey: "tickets" },
+  { id: "logs", label: "لاگ‌های سیستم", href: "/admin/logs", icon: ScrollText, roles: ["SUPER_ADMIN", "SUPPORT_AGENT"], tabKey: "logs" },
 ];
 
 export default function AdminSidebar({ onClose }: { onClose?: () => void }) {
@@ -45,9 +59,10 @@ export default function AdminSidebar({ onClose }: { onClose?: () => void }) {
 
   if (!user) return null;
 
+  const userPermissions: string[] = user.permissions || [];
+
   return (
     <aside className="w-full h-full bg-balkun-navy text-slate-300 flex flex-col">
-      {/* Header */}
       <div className="h-20 flex items-center gap-3 px-6 border-b border-white/5 shrink-0">
         <div className="w-10 h-10 rounded-xl bg-balkun-cyan/20 text-balkun-cyan flex items-center justify-center">
           <ShieldCheck className="w-6 h-6" />
@@ -60,7 +75,6 @@ export default function AdminSidebar({ onClose }: { onClose?: () => void }) {
         </div>
       </div>
 
-      {/* Admin Info */}
       <div className="px-6 py-5 border-b border-white/5">
         <div className="flex items-center gap-3">
           <div className="w-10 h-10 rounded-full bg-white/10 flex items-center justify-center font-black text-white">
@@ -73,10 +87,13 @@ export default function AdminSidebar({ onClose }: { onClose?: () => void }) {
         </div>
       </div>
 
-      {/* Navigation */}
       <nav className="flex-1 overflow-y-auto py-4 px-4 flex flex-col gap-1">
         {ADMIN_NAV.map((item) => {
           if (!item.roles.includes(user.role as UserRole)) return null;
+
+          if (item.tabKey && user.role === "SUPPORT_AGENT" && !userPermissions.includes(item.tabKey)) {
+            return null;
+          }
 
           const isActive = pathname.startsWith(item.href) && (item.href !== "/admin" || pathname === "/admin");
           const Icon = item.icon;
@@ -87,8 +104,8 @@ export default function AdminSidebar({ onClose }: { onClose?: () => void }) {
               href={item.href}
               onClick={onClose}
               className={`flex items-center gap-3 px-4 py-3.5 rounded-xl font-bold text-sm transition-all duration-300 ${
-                isActive 
-                  ? "bg-balkun-cyan text-white shadow-lg shadow-balkun-cyan/20" 
+                isActive
+                  ? "bg-balkun-cyan text-white shadow-lg shadow-balkun-cyan/20"
                   : "hover:bg-white/5 hover:text-white"
               }`}
             >
@@ -99,7 +116,6 @@ export default function AdminSidebar({ onClose }: { onClose?: () => void }) {
         })}
       </nav>
 
-      {/* Footer Actions */}
       <div className="p-4 border-t border-white/5 flex flex-col gap-2 shrink-0">
         <Link
           href="/"

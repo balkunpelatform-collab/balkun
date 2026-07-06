@@ -1,16 +1,17 @@
 // مسیر: src/app/api/admin/tickets/route.ts
 // GET: لیست تمام تیکت‌های پشتیبانی (همه کاربران) برای مرکز تیکتینگ ادمین طبق بخش ۴ سند فاز ۹.
-// دسترسی: SUPER_ADMIN و SUPPORT_AGENT هر دو مجازند.
+// 🆕 فاز ۱۱ / بخش ۳: دسترسی حالا از طریق requireAdminTabAccess با کلید "tickets"
+// کنترل می‌شود؛ SUPER_ADMIN بدون قیدوشرط و SUPPORT_AGENT فقط با داشتن این دسترسی وارد می‌شود.
 
 import { NextRequest, NextResponse } from "next/server";
 import { supabaseAdmin } from "@/lib/supabase-admin";
-import { requireAdminRole } from "@/lib/auth/adminAuth";
+import { requireAdminTabAccess } from "@/lib/auth/adminAuth";
 import type { TicketStatus } from "@/types/database";
 
 const VALID_STATUSES: TicketStatus[] = ["NEW", "IN_PROGRESS", "ANSWERED", "CLOSED"];
 
 export async function GET(request: NextRequest) {
-  const admin = await requireAdminRole(request, ["SUPER_ADMIN", "SUPPORT_AGENT"]);
+  const admin = await requireAdminTabAccess(request, "tickets");
   if (!admin) {
     return NextResponse.json({ success: false, error: "دسترسی غیرمجاز" }, { status: 403 });
   }

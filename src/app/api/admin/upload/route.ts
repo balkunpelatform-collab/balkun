@@ -1,42 +1,52 @@
+// مسیر: src/app/api/admin/upload/route.ts
+// 🆕 فاز ۱۱ / بخش ۴ (بلاگ): این روت از این پس بین دو باکت Supabase Storage
+// ("accommodations" و "blog") انتخاب می‌کند. فیلد اختیاری "bucket" در FormData
+// مشخص می‌کند تصویر برای کدام بخش آپلود می‌شود؛ اگر ارسال نشود یا نامعتبر باشد،
+// پیش‌فرض همان "accommodations" قبلی باقی می‌ماند (سازگار با فراخوانی‌های قبلی).
+
 import { NextRequest, NextResponse } from "next/server";
 import { supabaseAdmin } from "@/lib/supabase-admin";
 import { requireAdminRole } from "@/lib/auth/adminAuth";
 import sharp from "sharp";
 
+const ALLOWED_BUCKETS = ["accommodations", "blog"] as const;
+type AllowedBucket = (typeof ALLOWED_BUCKETS)[number];
+
+function isAllowedBucket(value: string): value is AllowedBucket {
+  return (ALLOWED_BUCKETS as readonly string[]).includes(value);
+}
+
 export async function POST(request: NextRequest) {
-  // ۱. بررسی دسترسی ادمین
   const admin = await requireAdminRole(request, ["SUPER_ADMIN", "SUPPORT_AGENT"]);
   if (!admin) return NextResponse.json({ success: false, error: "دسترسی غیرمجاز" }, { status: 403 });
 
   try {
     const formData = await request.formData();
     const file = formData.get("file") as File;
+    const requestedBucket = (formData.get("bucket") as string) || "accommodations";
+    const bucket: AllowedBucket = isAllowedBucket(requestedBucket) ? requestedBucket : "accommodations";
 
     if (!file) return NextResponse.json({ success: false, error: "فایلی ارسال نشده است" }, { status: 400 });
 
-    // محدودیت حجم قبل از پردازش (۲ مگابایت)
     if (file.size > 2 * 1024 * 1024) {
       return NextResponse.json({ success: false, error: "حجم فایل نباید بیشتر از ۲ مگابایت باشد" }, { status: 400 });
     }
 
-    // تبدیل فایل به Buffer برای استفاده در Sharp
     const buffer = Buffer.from(await file.arrayBuffer());
 
-    // ۲. پردازش تصویر با Sharp (تغییر فرمت به webp، فشرده‌سازی و تغییر سایز بهینه)
     const optimizedBuffer = await sharp(buffer)
-      .resize({ width: 1200, withoutEnlargement: true }) // حداکثر عرض 1200 پیکسل
-      .webp({ quality: 80 }) // کیفیت 80 درصد برای فرمت webp
+      .resize({ width: 1200, withoutEnlargement: true })
+      .webp({ quality: 80 })
       .toBuffer();
 
-    // ۳. ساخت نام سئو بیس و یونیک
     const timestamp = Date.now();
     const randomString = Math.random().toString(36).substring(2, 8);
-    const fileName = `balkun-exclusive-${timestamp}-${randomString}.webp`;
+    const prefix = bucket === "blog" ? "balkun-blog" : "balkun-exclusive";
+    const fileName = `${prefix}-${timestamp}-${randomString}.webp`;
     const filePath = `images/${fileName}`;
 
-    // ۴. آپلود در استورج Supabase
-    const { data: uploadData, error: uploadError } = await supabaseAdmin.storage
-      .from("accommodations")
+    const { error: uploadError } = await supabaseAdmin.storage
+      .from(bucket)
       .upload(filePath, optimizedBuffer, {
         contentType: "image/webp",
         cacheControl: "3600",
@@ -48,9 +58,8 @@ export async function POST(request: NextRequest) {
       throw new Error("خطا در آپلود عکس در سرور");
     }
 
-    // ۵. دریافت لینک عمومی عکس
     const { data: publicUrlData } = supabaseAdmin.storage
-      .from("accommodations")
+      .from(bucket)
       .getPublicUrl(filePath);
 
     return NextResponse.json({ 
