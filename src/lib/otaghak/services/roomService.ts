@@ -60,7 +60,16 @@ export async function getRoomById(roomId: string): Promise<BalkunRoomDetails | n
   let rawData: OtaghakRawRoomDetails;
 
   if (OTAGHAK_CONFIG.useMock) {
-    const mockData = MOCK_ROOM_DETAILS[roomId] || MOCK_ROOM_DETAILS["RM-1001"];
+    // 🆕 رفع باگ: قبلاً اگر شناسه در MOCK_ROOM_DETAILS پیدا نمی‌شد، به‌صورت
+    // پیش‌فرض یک محصول تستیِ نامرتبط (RM-1001) نمایش داده می‌شد — یعنی با
+    // کلیک روی یک محصولِ نامعتبر، اطلاعات محصول اشتباهی باز می‌شد.
+    // حالا اگر شناسه معتبر نباشد، صفحه‌ی «یافت نشد» (404) نمایش داده می‌شود.
+    const mockData = MOCK_ROOM_DETAILS[roomId];
+
+    if (!mockData) {
+      return null;
+    }
+
     rawData = mockData;
   } else {
     try {

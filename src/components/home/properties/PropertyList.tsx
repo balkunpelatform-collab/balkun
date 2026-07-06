@@ -3,6 +3,7 @@ import { ArrowLeft, Building2 } from "lucide-react";
 import { CATEGORIES } from "@/constants/categories";
 import { MOCK_PROPERTIES } from "@/constants/mockProperties";
 import type { MockProperty } from "@/constants/mockProperties";
+import { OTAGHAK_CONFIG } from "@/lib/otaghak/config";
 import CategorySection from "./CategorySection";
 import { supabaseAdmin } from "@/lib/supabase-admin";
 
@@ -42,7 +43,16 @@ export default async function PropertyList() {
         // اگر حداقل یک اقامتگاه واقعی در این دسته‌بندی وجود داشته باشد،
         // آیتم‌های موک/تستی برای همان دسته‌بندی اصلاً نمایش داده نمی‌شوند.
         const realForCategory = realProperties.filter((property) => property.category === category.id);
-        const mockForCategory = MOCK_PROPERTIES.filter((property) => property.category === category.id);
+
+        // 🆕 رفع باگ: آیتم‌های Mock فقط تا زمانی نمایش داده می‌شوند که
+        // API واقعی اتاقک هنوز وصل نشده باشد (OTAGHAK_CONFIG.useMock === true).
+        // به محض این‌که آدرس واقعی اتاقک در .env.local تنظیم شود و
+        // OTAGHAK_USE_MOCK=false گردد، این فایل Mock به‌طور خودکار کنار
+        // گذاشته می‌شود و دیگر هیچ‌جا نمایش داده نخواهد شد.
+        const mockForCategory = OTAGHAK_CONFIG.useMock
+          ? MOCK_PROPERTIES.filter((property) => property.category === category.id)
+          : [];
+
         const properties = realForCategory.length > 0 ? realForCategory : mockForCategory;
 
         return (
