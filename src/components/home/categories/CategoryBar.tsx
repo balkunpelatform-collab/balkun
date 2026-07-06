@@ -1,6 +1,7 @@
 // مسیر: src/components/home/categories/CategoryBar.tsx
 
 import Image from "next/image";
+import Link from "next/link";
 import { CATEGORIES } from "@/constants/categories";
 
 export default function CategoryBar() {
@@ -12,9 +13,15 @@ export default function CategoryBar() {
           const isSpecial = category.isSpecial;
           const isExclusive = category.id === "exclusive"; // برجسته‌تر کردن دسته اختصاصی
 
+          // 🆕 رفع باگ: دسته «سازمانی» (isSpecial) صفحه‌ی اختصاصی خودش را دارد (/corporate)،
+          // بقیه‌ی دسته‌ها باید به نتایج جستجوی همان دسته لینک شوند — دقیقاً همان الگویی که
+          // دکمه‌ی «مشاهده همه» در src/components/home/properties/PropertyList.tsx استفاده می‌کند.
+          const href = isSpecial ? "/corporate" : `/search?category=${category.id}`;
+
           return (
-            <button
+            <Link
               key={category.id}
+              href={href}
               className={`flex flex-col items-center justify-center gap-2 transition-all group w-[72px] md:w-24 ${
                 isSpecial ? "text-balkun-orange" : isExclusive ? "text-balkun-cyan" : "text-slate-600 hover:text-balkun-navy"
               }`}
@@ -39,7 +46,7 @@ export default function CategoryBar() {
               <span className={`text-[11px] md:text-sm whitespace-nowrap ${isSpecial || isExclusive ? "font-black" : "font-semibold"}`}>
                 {category.label}
               </span>
-            </button>
+            </Link>
           );
         })}
       </div>
