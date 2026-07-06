@@ -1,18 +1,28 @@
 // مسیر مقصد این فایل: src/components/home/search/FloatingSearchBox.tsx
 // این فایل را به‌طور کامل جایگزین فایل فعلی کنید
 //
-// تغییر اصلی نسبت به نسخه قبلی: این کامپوننت اکنون تعاملی است.
-// لیست مقصدها از /api/otaghak/base-data خوانده می‌شود (همان زیرساخت فاز ۳)
-// و با زدن دکمه جستجو، کاربر به صفحه /search با پارامترهای انتخابی هدایت می‌شود.
+// 🆕 رفع باگ: انتخاب‌گر تاریخ قبلاً از اینپوت استاندارد HTML (type="date") استفاده می‌کرد
+// که همیشه با تقویم میلادی نمایش داده می‌شود (مرورگرها از تقویم شمسی پشتیبانی نمی‌کنند).
+// اکنون از همان کتابخانه‌ی react-multi-date-picker که در BookingWidget.tsx استفاده شده،
+// با تنظیمات تقویم شمسی (persian) و زبان فارسی (persian_fa) استفاده می‌شود.
 //
-// نکته: انتخاب‌گر تاریخ فعلاً از اینپوت استاندارد HTML (میلادی) استفاده می‌کند.
-// جایگزینی با تقویم شمسی اختصاصی، یک بهبود جداگانه برای فاز ۴ است.
+// نکته: خروجی تاریخ همچنان به‌صورت میلادی استاندارد (YYYY-MM-DD) در URL و به سمت
+// سرور/دیتابیس ارسال می‌شود (چون بک‌اند و لینک‌های صفحه‌ی جستجو بر همین اساس کار می‌کنند)
+// و فقط نمایش آن به کاربر شمسی شده است.
+//
+// 🆕 رفع باگ دوم: باکس انتخاب تعداد مسافران قبلاً با کلیک بیرون از آن بسته نمی‌شد؛
+// اکنون با کلیک در هر جای دیگر صفحه بسته می‌شود.
 
 "use client";
 
-import { useEffect, useState } from "react";
+import { useEffect, useRef, useState } from "react";
 import { useRouter } from "next/navigation";
 import { MapPin, CalendarDays, User, Search, Minus, Plus } from "lucide-react";
+import DatePicker, { DateObject } from "react-multi-date-picker";
+import persian from "react-date-object/calendars/persian";
+import persian_fa from "react-date-object/locales/persian_fa";
+import gregorian from "react-date-object/calendars/gregorian";
+import gregorian_en from "react-date-object/locales/gregorian_en";
 import { HERO_CONTENT } from "@/constants/home";
 import type { OtaghakCity } from "@/lib/otaghak/types";
 
@@ -21,10 +31,12 @@ export default function FloatingSearchBox() {
 
   const [cities, setCities] = useState<OtaghakCity[]>([]);
   const [selectedCity, setSelectedCity] = useState("");
-  const [checkin, setCheckin] = useState("");
-  const [checkout, setCheckout] = useState("");
+  // تاریخ ورود و خروج به‌صورت بازه‌ی شمسی (Persian DateObject) نگهداری می‌شود
+  const [dates, setDates] = useState<DateObject[]>([]);
   const [person, setPerson] = useState(2);
   const [isPersonOpen, setIsPersonOpen] = useState(false);
+
+  const personBoxRef = useRef<HTMLDivElement>(null);
 
   // لیست شهرها را یک بار، در بارگذاری اولیه، از زیرساخت فاز ۳ می‌گیریم
   useEffect(() => {
@@ -36,11 +48,33 @@ export default function FloatingSearchBox() {
       .catch((err) => console.error("خطا در دریافت لیست شهرها:", err));
   }, []);
 
+  // بستن باکس تعداد مسافران با کلیک در بیرون از آن
+  useEffect(() => {
+    if (!isPersonOpen) return;
+
+    const handleClickOutside = (event: MouseEvent) => {
+      if (personBoxRef.current && !personBoxRef.current.contains(event.target as Node)) {
+        setIsPersonOpen(false);
+      }
+    };
+
+    document.addEventListener("mousedown", handleClickOutside);
+    return () => document.removeEventListener("mousedown", handleClickOutside);
+  }, [isPersonOpen]);
+
   const handleSearch = () => {
     const params = new URLSearchParams();
     if (selectedCity) params.set("city", selectedCity);
-    if (checkin) params.set("checkin", checkin);
-    if (checkout) params.set("checkout", checkout);
+
+    // تبدیل تاریخ‌های انتخاب‌شده (شمسی) به فرمت میلادی استاندارد YYYY-MM-DD
+    // برای سازگاری با بک‌اند و پارامترهای صفحه‌ی جستجو
+    if (dates.length === 2 && dates[0] && dates[1]) {
+      const checkin = dates[0].convert(gregorian, gregorian_en).format("YYYY-MM-DD");
+      const checkout = dates[1].convert(gregorian, gregorian_en).format("YYYY-MM-DD");
+      params.set("checkin", checkin);
+      params.set("checkout", checkout);
+    }
+
     params.set("person", String(person));
 
     router.push(`/search?${params.toString()}`);
@@ -76,34 +110,26 @@ export default function FloatingSearchBox() {
 
           <div className="w-full h-[1px] md:hidden bg-slate-200 my-1"></div>
 
-          {/* تاریخ ورود / خروج */}
-          <div className="flex-[1.2] w-full flex items-center justify-between p-3 md:border-l border-slate-200">
-            <div className="flex flex-col flex-1 min-w-0">
-              <div className="flex items-center gap-2 mb-0.5">
-                <CalendarDays className="w-3.5 h-3.5 text-slate-400" />
-                <span className="text-[11px] font-bold text-slate-400">تاریخ ورود</span>
-              </div>
-              <input
-                type="date"
-                value={checkin}
-                onChange={(e) => setCheckin(e.target.value)}
-                className="bg-transparent border-none outline-none text-sm font-bold text-slate-900 w-full"
-              />
+          {/* تاریخ ورود / خروج (تقویم شمسی) */}
+          <div className="flex-[1.2] w-full flex items-center gap-3 p-3 rounded-xl md:border-l border-slate-200">
+            <div className="p-2 bg-balkun-cyan/10 rounded-full text-balkun-cyan shrink-0">
+              <CalendarDays className="w-5 h-5" />
             </div>
-
-            <div className="w-[1px] h-8 bg-slate-200 mx-2 shrink-0"></div>
-
             <div className="flex flex-col flex-1 min-w-0">
-              <div className="flex items-center gap-2 mb-0.5">
-                <CalendarDays className="w-3.5 h-3.5 text-slate-400" />
-                <span className="text-[11px] font-bold text-slate-400">تاریخ خروج</span>
-              </div>
-              <input
-                type="date"
-                value={checkout}
-                onChange={(e) => setCheckout(e.target.value)}
-                min={checkin || undefined}
-                className="bg-transparent border-none outline-none text-sm font-bold text-slate-900 w-full"
+              <span className="text-[11px] font-bold text-slate-400 mb-0.5">تاریخ ورود و خروج</span>
+              <DatePicker
+                range
+                calendar={persian}
+                locale={persian_fa}
+                value={dates}
+                onChange={setDates}
+                minDate={new DateObject({ calendar: persian })}
+                placeholder="انتخاب تاریخ سفر"
+                inputClass="w-full bg-transparent border-none outline-none text-sm text-slate-900 font-bold cursor-pointer placeholder:font-medium placeholder:text-slate-400"
+                containerClassName="w-full"
+                calendarPosition="bottom-right"
+                dateSeparator="  تا  "
+                format="YYYY/MM/DD"
               />
             </div>
           </div>
@@ -111,7 +137,7 @@ export default function FloatingSearchBox() {
           <div className="w-full h-[1px] md:hidden bg-slate-200 my-1"></div>
 
           {/* تعداد مسافران */}
-          <div className="flex-1 w-full relative">
+          <div className="flex-1 w-full relative" ref={personBoxRef}>
             <button
               type="button"
               onClick={() => setIsPersonOpen((v) => !v)}
