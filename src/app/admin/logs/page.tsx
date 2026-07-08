@@ -1,7 +1,8 @@
 "use client";
 
 import { useEffect, useState } from "react";
-import { Loader2, Plus, ScrollText, X, Save } from "lucide-react";
+import { Loader2, Plus, ScrollText, X, Save, KeyRound, Copy, Check } from "lucide-react";
+import { useAuthStore } from "@/store/authStore";
 
 const LOG_CATEGORIES: Record<string, string> = {
   PHONE_CALL_RECORD: "ثبت تماس تلفنی",
@@ -10,7 +11,22 @@ const LOG_CATEGORIES: Record<string, string> = {
   SMS_REPORT: "گزارش پیامک/ارتباطات",
 };
 
+// 🆕 ردیف نمایش کد ورود اخیر (فقط برای مدیر ارشد)
+interface OtpCodeRow {
+  id: string;
+  phoneNumber: string;
+  fullName: string | null;
+  code: string;
+  createdAt: string;
+  expiresAt: string;
+  isUsed: boolean;
+  isExpired: boolean;
+}
+
 export default function AdminLogsPage() {
+  const { user } = useAuthStore();
+  const isSuperAdmin = user?.role === "SUPER_ADMIN";
+
   const [logs, setLogs] = useState<any[]>([]);
   const [isLoading, setIsLoading] = useState(true);
   const [category, setCategory] = useState("");
@@ -18,7 +34,13 @@ export default function AdminLogsPage() {
   const [total, setTotal] = useState(0);
 
   const [showAddForm, setShowAddForm] = useState(false);
-  
+
+  // 🆕 کدهای ورود اخیر — تا وقتی پنل پیامکی واقعی وصل نشده (فقط مدیر ارشد می‌بیند)
+  const [otpCodes, setOtpCodes] = useState<OtpCodeRow[]>([]);
+  const [isLoadingOtp, setIsLoadingOtp] = useState(true);
+  const [otpFeatureDisabled, setOtpFeatureDisabled] = useState(false);
+  const [copiedId, setCopiedId] = useState<string | null>(null);
+
   // فرم افزودن لاگ
   const [formData, setFormData] = useState({
     logCategory: "PHONE_CALL_RECORD",
@@ -33,6 +55,40 @@ export default function AdminLogsPage() {
   useEffect(() => {
     fetchLogs();
   }, [category, page]);
+
+  // 🆕 دریافت دوره‌ای کدهای ورود اخیر (هر ۵ ثانیه) — فقط اگر کاربر فعلی مدیر ارشد باشد
+  useEffect(() => {
+    if (!isSuperAdmin) {
+      setIsLoadingOtp(false);
+      return;
+    }
+    fetchOtpCodes();
+    const interval = setInterval(fetchOtpCodes, 5000);
+    return () => clearInterval(interval);
+    // eslint-disable-next-line react-hooks/exhaustive-deps
+  }, [isSuperAdmin]);
+
+  const fetchOtpCodes = async () => {
+    try {
+      const res = await fetch("/api/admin/otp-codes");
+      const data = await res.json();
+      if (data.success) {
+        setOtpFeatureDisabled(!!data.disabled);
+        setOtpCodes(data.codes || []);
+      }
+    } catch (error) {
+      console.error("Error fetching OTP codes:", error);
+    } finally {
+      setIsLoadingOtp(false);
+    }
+  };
+
+  const handleCopyCode = (row: OtpCodeRow) => {
+    navigator.clipboard.writeText(row.code).then(() => {
+      setCopiedId(row.id);
+      setTimeout(() => setCopiedId(null), 1500);
+    });
+  };
 
   const fetchLogs = async () => {
     setIsLoading(true);
@@ -99,6 +155,88 @@ export default function AdminLogsPage() {
           <Plus className="w-4 h-4" /> ثبت یادداشت جدید
         </button>
       </div>
+
+      {/* 🆕 کدهای ورود اخیر — فقط مدیر ارشد می‌بیند، تا وقتی پنل پیامکی واقعی وصل نشده */}
+      {isSuperAdmin && (
+        <div className="bg-white border border-slate-100 rounded-2xl shadow-sm overflow-hidden">
+          <div className="p-4 border-b border-slate-100 flex items-center gap-2">
+            <KeyRound className="w-5 h-5 text-balkun-cyan shrink-0" />
+            <div>
+              <h2 className="text-sm font-black text-slate-800">کدهای ورود اخیر (فقط مدیر ارشد)</h2>
+              <p className="text-xs font-medium text-slate-500 mt-0.5">
+                تا وقتی پنل پیامکی وصل نشده، کد ورود هرکسی که تلاش کند وارد شود این‌جا می‌آید. هر ۵ ثانیه به‌روز می‌شود.
+              </p>
+            </div>
+          </div>
+
+          {otpFeatureDisabled ? (
+            <div className="px-6 py-8 text-center text-slate-500 font-bold text-xs">
+              پنل پیامکی واقعی وصل شده، پس این بخش دیگر لازم نیست و خودکار غیرفعال شد.
+            </div>
+          ) : (
+            <div className="overflow-x-auto">
+              <table className="w-full text-sm text-right">
+                <thead className="bg-slate-50/50 text-slate-500 font-bold border-b border-slate-100">
+                  <tr>
+                    <th className="px-6 py-3">شماره موبایل</th>
+                    <th className="px-6 py-3">نام (در صورت وجود)</th>
+                    <th className="px-6 py-3">کد</th>
+                    <th className="px-6 py-3">وضعیت</th>
+                    <th className="px-6 py-3">زمان درخواست</th>
+                  </tr>
+                </thead>
+                <tbody className="divide-y divide-slate-100">
+                  {isLoadingOtp && otpCodes.length === 0 ? (
+                    <tr>
+                      <td colSpan={5} className="px-6 py-8 text-center">
+                        <Loader2 className="w-5 h-5 text-balkun-cyan animate-spin mx-auto" />
+                      </td>
+                    </tr>
+                  ) : otpCodes.length === 0 ? (
+                    <tr>
+                      <td colSpan={5} className="px-6 py-8 text-center text-slate-500 font-bold text-xs">
+                        در ۳۰ دقیقه اخیر کد ورودی صادر نشده
+                      </td>
+                    </tr>
+                  ) : (
+                    otpCodes.map((row) => {
+                      const status = row.isUsed
+                        ? { label: "استفاده‌شده", className: "bg-slate-100 text-slate-500" }
+                        : row.isExpired
+                        ? { label: "منقضی‌شده", className: "bg-red-50 text-red-500" }
+                        : { label: "فعال", className: "bg-emerald-50 text-emerald-600" };
+                      return (
+                        <tr key={row.id} className="hover:bg-slate-50/50 transition-colors">
+                          <td className="px-6 py-3 font-bold text-slate-700" dir="ltr">{row.phoneNumber}</td>
+                          <td className="px-6 py-3 font-medium text-slate-600">{row.fullName || "—"}</td>
+                          <td className="px-6 py-3">
+                            <div className="flex items-center gap-2">
+                              <span className="font-black text-slate-800 text-base tracking-widest" dir="ltr">{row.code}</span>
+                              <button
+                                onClick={() => handleCopyCode(row)}
+                                className="p-1.5 rounded-lg bg-slate-50 hover:bg-slate-100 text-slate-500 transition-colors"
+                                title="کپی کد"
+                              >
+                                {copiedId === row.id ? <Check className="w-3.5 h-3.5 text-emerald-500" /> : <Copy className="w-3.5 h-3.5" />}
+                              </button>
+                            </div>
+                          </td>
+                          <td className="px-6 py-3">
+                            <span className={`px-2.5 py-1 rounded-full text-xs font-bold ${status.className}`}>{status.label}</span>
+                          </td>
+                          <td className="px-6 py-3 text-xs font-bold text-slate-500" dir="ltr">
+                            {new Date(row.createdAt).toLocaleTimeString("fa-IR")}
+                          </td>
+                        </tr>
+                      );
+                    })
+                  )}
+                </tbody>
+              </table>
+            </div>
+          )}
+        </div>
+      )}
 
       {showAddForm && (
         <div className="bg-white rounded-2xl border border-slate-200 p-6 shadow-lg relative">

@@ -251,3 +251,19 @@ export interface BlogPost {
   updatedAt: Date | string;
   publishedAt: Date | string | null;
 }
+
+// ==========================================
+// 12. OTP Codes Collection (کدهای تایید ورود/ثبت‌نام)
+// ==========================================
+// 🆕 اضافه شد تا مدیران ارشد بتوانند کدهای اخیر را از پنل ادمین (بخش لاگ‌ها) ببینند
+// (src/app/api/admin/otp-codes/route.ts) — فقط تا زمانی که پنل پیامکی واقعی وصل نشده.
+export interface OtpCode {
+  id: string;
+  phoneNumber: string;
+  code: string;
+  expiresAt: Date | string;
+  isUsed: boolean;
+  ipAddress: string | null;
+  attemptCount: number;
+  createdAt: Date | string;
+}
