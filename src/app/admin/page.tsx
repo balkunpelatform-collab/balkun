@@ -2,8 +2,9 @@
 
 import { useEffect, useState } from "react";
 import { useRouter } from "next/navigation";
+import Link from "next/link";
 import { useAuthStore } from "@/store/authStore";
-import { CalendarCheck, HeadphonesIcon, Users, Wallet, Loader2, TrendingUp } from "lucide-react";
+import { CalendarCheck, HeadphonesIcon, Users, Wallet, Loader2, TrendingUp, Building2 } from "lucide-react";
 import { formatPrice } from "@/utils/priceCalculator";
 
 interface DashboardData {
@@ -13,6 +14,7 @@ interface DashboardData {
     openTicketsCount: number;
     newUsersThisMonth: number;
     monthlyRevenue: number;
+    unreadCorporateLeadsCount: number;
   };
   bookingsTrend: { date: string; count: number }[];
   error?: string;
@@ -79,8 +81,26 @@ export default function AdminDashboardPage() {
         <p className="text-sm font-medium text-slate-500 mt-2">خلاصه وضعیت پلتفرم بالکن در لحظه</p>
       </div>
 
+      {/* 🆕 بنر هشدار درخواست‌های سازمانی خوانده‌نشده — فقط وقتی موردی هست نمایش داده می‌شود */}
+      {kpis.unreadCorporateLeadsCount > 0 && (
+        <Link
+          href="/admin/corporate"
+          className="flex items-center justify-between gap-4 bg-balkun-orange/10 hover:bg-balkun-orange/15 border border-balkun-orange/20 rounded-2xl px-6 py-4 transition-colors group"
+        >
+          <div className="flex items-center gap-3">
+            <div className="w-10 h-10 bg-balkun-orange/20 text-balkun-orange rounded-xl flex items-center justify-center shrink-0">
+              <Building2 className="w-5 h-5" />
+            </div>
+            <span className="font-bold text-sm text-balkun-navy">
+              {kpis.unreadCorporateLeadsCount} درخواست سازمانی جدید منتظر بررسی است
+            </span>
+          </div>
+          <span className="text-xs font-black text-balkun-orange group-hover:underline shrink-0">مشاهده در تب سازمانی ←</span>
+        </Link>
+      )}
+
       {/* KPIs Grid */}
-      <div className="grid grid-cols-1 md:grid-cols-2 lg:grid-cols-4 gap-4 md:gap-6">
+      <div className="grid grid-cols-1 md:grid-cols-2 lg:grid-cols-5 gap-4 md:gap-6">
         
         <div className="bg-white p-6 rounded-[2rem] border border-slate-100 shadow-sm flex flex-col gap-4 relative overflow-hidden group">
           <div className="absolute -right-6 -top-6 w-24 h-24 bg-balkun-cyan/10 rounded-full blur-2xl group-hover:bg-balkun-cyan/20 transition-colors"></div>
@@ -114,6 +134,20 @@ export default function AdminDashboardPage() {
             <span className="text-3xl font-black text-slate-800">{kpis.newUsersThisMonth}</span>
           </div>
         </div>
+
+        <Link
+          href="/admin/corporate"
+          className="bg-white p-6 rounded-[2rem] border border-slate-100 shadow-sm flex flex-col gap-4 relative overflow-hidden group hover:border-balkun-orange/30 transition-colors"
+        >
+          <div className="absolute -right-6 -top-6 w-24 h-24 bg-balkun-orange/10 rounded-full blur-2xl group-hover:bg-balkun-orange/20 transition-colors"></div>
+          <div className="w-12 h-12 bg-balkun-orange/10 text-balkun-orange rounded-2xl flex items-center justify-center shrink-0">
+            <Building2 className="w-6 h-6" />
+          </div>
+          <div>
+            <span className="block text-sm font-bold text-slate-500 mb-1">درخواست‌های سازمانی خوانده‌نشده</span>
+            <span className="text-3xl font-black text-slate-800">{kpis.unreadCorporateLeadsCount}</span>
+          </div>
+        </Link>
 
         <div className="bg-gradient-to-br from-balkun-navy to-balkun-navy-dark p-6 rounded-[2rem] shadow-xl flex flex-col gap-4 relative overflow-hidden group text-white">
           <div className="absolute -left-10 -bottom-10 w-32 h-32 bg-white/5 rounded-full blur-2xl group-hover:bg-white/10 transition-colors"></div>

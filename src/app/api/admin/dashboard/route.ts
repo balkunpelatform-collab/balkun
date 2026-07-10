@@ -2,6 +2,8 @@
 // GET: شاخص‌های کلیدی داشبورد ادمین (KPIs) طبق بخش ۱ سند فاز ۹.
 // چون شامل ارقام مالی حساس (درآمد حاصل از حاشیه سود ۵٪) است، فقط SUPER_ADMIN مجاز است
 // (طبق بخش ۵ سند فاز ۹: SUPPORT_AGENT فقط به تیکت‌ها و لیست رزروها دسترسی دارد، نه گزارش مالی).
+// 🆕 KPI «درخواست‌های سازمانی خوانده‌نشده» اضافه شد تا مدیر ارشد بلافاصله بعد از
+// ورود به داشبورد، از درخواست‌های جدید صفحه‌ی /corporate مطلع شود.
 
 import { NextRequest, NextResponse } from "next/server";
 import { supabaseAdmin } from "@/lib/supabase-admin";
@@ -18,7 +20,7 @@ export async function GET(request: NextRequest) {
   const monthStart = new Date(now.getFullYear(), now.getMonth(), 1).toISOString();
   const thirtyDaysAgo = new Date(now.getTime() - 30 * 24 * 60 * 60 * 1000).toISOString();
 
-  const [todayBookingsRes, openTicketsRes, newUsersRes, monthlyBookingsRes, trendBookingsRes] =
+  const [todayBookingsRes, openTicketsRes, newUsersRes, monthlyBookingsRes, trendBookingsRes, unreadLeadsRes] =
     await Promise.all([
       supabaseAdmin
         .from("bookings")
@@ -38,6 +40,10 @@ export async function GET(request: NextRequest) {
         .eq("status", "PAID_CONFIRMED")
         .gte("createdAt", monthStart),
       supabaseAdmin.from("bookings").select("createdAt").gte("createdAt", thirtyDaysAgo),
+      supabaseAdmin
+        .from("organization_leads")
+        .select("id", { count: "exact", head: true })
+        .eq("adminStatus", "UNREAD"),
     ]);
 
   if (
@@ -45,7 +51,8 @@ export async function GET(request: NextRequest) {
     openTicketsRes.error ||
     newUsersRes.error ||
     monthlyBookingsRes.error ||
-    trendBookingsRes.error
+    trendBookingsRes.error ||
+    unreadLeadsRes.error
   ) {
     console.error("Dashboard KPI Fetch Error", {
       todayBookingsRes: todayBookingsRes.error,
@@ -53,6 +60,7 @@ export async function GET(request: NextRequest) {
       newUsersRes: newUsersRes.error,
       monthlyBookingsRes: monthlyBookingsRes.error,
       trendBookingsRes: trendBookingsRes.error,
+      unreadLeadsRes: unreadLeadsRes.error,
     });
     return NextResponse.json({ success: false, error: "خطا در دریافت اطلاعات داشبورد" }, { status: 500 });
   }
@@ -82,6 +90,7 @@ export async function GET(request: NextRequest) {
       openTicketsCount: openTicketsRes.count || 0,
       newUsersThisMonth: newUsersRes.count || 0,
       monthlyRevenue,
+      unreadCorporateLeadsCount: unreadLeadsRes.count || 0,
     },
     bookingsTrend,
   });

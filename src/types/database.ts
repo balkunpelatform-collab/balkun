@@ -123,7 +123,9 @@ export interface OrganizationLead {
   personnelCount: number;
   description: string;
   adminStatus: OrgLeadStatus;
+  adminNote: string | null;
   createdAt: Date | string;
+  updatedAt: Date | string;
 }
 
 // ==========================================
@@ -177,6 +179,8 @@ export type AdminActionType =
   | "BOOKING_DELETE"
   | "PERMISSIONS_CHANGE"
   | "BLOG_POST_CHANGE"
+  | "CORPORATE_LEAD_UPDATE"
+  | "CORPORATE_NUMBER_CHANGE"
   | "OTHER";
 
 export interface AdminAuditLog {

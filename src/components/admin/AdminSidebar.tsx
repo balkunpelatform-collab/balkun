@@ -1,5 +1,7 @@
 // مسیر: src/components/admin/AdminSidebar.tsx
 // 🆕 فاز ۱۱ / بخش ۴: آیتم «مدیریت بلاگ» با tabKey="blog" اضافه شد.
+// 🆕 آیتم «سازمانی» با tabKey="corporate" اضافه شد — مرکز مدیریت لیدهای
+// سازمانی و لیست سفید شماره‌ها.
 
 "use client";
 
@@ -16,6 +18,7 @@ import {
   ShieldCheck,
   Home,
   Newspaper,
+  Building2,
   type LucideIcon,
 } from "lucide-react";
 import { useAuthStore } from "@/store/authStore";
@@ -37,6 +40,7 @@ const ADMIN_NAV: AdminNavItem[] = [
   { id: "accommodations", label: "اقامتگاه‌های اختصاصی", href: "/admin/accommodations", icon: Home, roles: ["SUPER_ADMIN", "SUPPORT_AGENT"], tabKey: "accommodations" },
   { id: "blog", label: "مدیریت بلاگ", href: "/admin/blog", icon: Newspaper, roles: ["SUPER_ADMIN", "SUPPORT_AGENT"], tabKey: "blog" },
   { id: "bookings", label: "مدیریت رزروها", href: "/admin/bookings", icon: CalendarDays, roles: ["SUPER_ADMIN", "SUPPORT_AGENT"], tabKey: "bookings" },
+  { id: "corporate", label: "سازمانی", href: "/admin/corporate", icon: Building2, roles: ["SUPER_ADMIN", "SUPPORT_AGENT"], tabKey: "corporate" },
   { id: "tickets", label: "مرکز تیکتینگ", href: "/admin/tickets", icon: HeadphonesIcon, roles: ["SUPER_ADMIN", "SUPPORT_AGENT"], tabKey: "tickets" },
   { id: "logs", label: "لاگ‌های سیستم", href: "/admin/logs", icon: ScrollText, roles: ["SUPER_ADMIN", "SUPPORT_AGENT"], tabKey: "logs" },
 ];

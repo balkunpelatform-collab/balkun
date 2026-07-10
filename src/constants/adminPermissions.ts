@@ -7,8 +7,14 @@
 // 🆕 فاز ۱۱ / بخش ۴: تب "blog" اضافه شد (مدیریت کامل بلاگ برای هر ادمینی که
 // این دسترسی به او داده شده باشد؛ برخلاف اقامتگاه‌ها، برای بلاگ هیچ عملیات
 // SUPER_ADMIN-only جداگانه‌ای وجود ندارد چون محتوای بلاگ مالی/حساس نیست).
+//
+// 🆕 تب "corporate" اضافه شد: مرکز مدیریت تمام درخواست‌ها و امور مربوط به
+// مشتریان سازمانی (لیدهای ورودی از صفحه‌ی /corporate + لیست سفید شماره‌های
+// سازمانی). مثل بلاگ، این تب هم مالی/حساس نیست (خودِ عملیات شارژ کیف پول یا
+// تغییر نقش کاربر همچنان منحصراً SUPER_ADMIN است و از این تب انجام نمی‌شود)،
+// پس برای SUPPORT_AGENT هم قابل واگذاری است.
 
-export const ADMIN_TAB_KEYS = ["accommodations", "bookings", "tickets", "logs", "blog"] as const;
+export const ADMIN_TAB_KEYS = ["accommodations", "bookings", "tickets", "logs", "blog", "corporate"] as const;
 
 export type AdminTabKey = (typeof ADMIN_TAB_KEYS)[number];
 
@@ -18,6 +24,7 @@ export const ADMIN_TAB_LABELS: Record<AdminTabKey, string> = {
   tickets: "مرکز تیکتینگ",
   logs: "لاگ‌های سیستم",
   blog: "مدیریت بلاگ",
+  corporate: "سازمانی",
 };
 
 export function isValidAdminTabKey(value: string): value is AdminTabKey {
