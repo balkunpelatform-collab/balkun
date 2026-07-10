@@ -2,6 +2,7 @@ import { NextRequest, NextResponse } from "next/server";
 import { supabaseAdmin } from "@/lib/supabase-admin";
 import { sendBookingCancelledSms, sendRefundSms } from "@/lib/sms/smsService";
 import { formatPrice } from "@/utils/priceCalculator";
+import { CANCELLATION_DEADLINE_HOURS } from "@/constants/booking";
 
 export async function POST(
   req: NextRequest,
@@ -32,6 +33,24 @@ export async function POST(
     }
 
     const wasPaidConfirmed = booking.status === "PAID_CONFIRMED";
+
+    // 🆕 تسک ۱.۶ — بررسی مهلت زمانی لغو رایگان برای رزروهای قطعی‌شده (پرداخت‌شده).
+    // رزروهای «در انتظار پرداخت» هیچ محدودیت زمانی ندارند چون هنوز مبلغی از
+    // کاربر دریافت نشده است.
+    if (wasPaidConfirmed) {
+      const checkInTime = new Date(booking.checkInDate).getTime();
+      const hoursUntilCheckIn = (checkInTime - Date.now()) / (1000 * 60 * 60);
+
+      if (hoursUntilCheckIn < CANCELLATION_DEADLINE_HOURS) {
+        return NextResponse.json(
+          {
+            success: false,
+            error: `مهلت لغو رایگان این رزرو به پایان رسیده است. لغو رزرو قطعی‌شده تنها تا ${CANCELLATION_DEADLINE_HOURS} ساعت مانده به تاریخ ورود امکان‌پذیر است. برای بررسی شرایط استثنایی با پشتیبانی بالکن تماس بگیرید.`,
+          },
+          { status: 400 }
+        );
+      }
+    }
 
     // ۲. اگر رزرو قطعی (پرداخت‌شده) بود، پول را به کیف پول برمی‌گردانیم
     if (wasPaidConfirmed) {

@@ -1,6 +1,8 @@
+// این فایل جایگزین فایل فعلی شود در مسیر:
+// src/app/api/admin/bookings/[id]/route.ts
 
 // مسیر: src/app/api/admin/bookings/[id]/route.ts
-// 🆕 فایل جدید — قابلیت جاافتاده‌ی «ویرایش/حذف رزرو توسط ادمین» که در بازبینی درخواست شد.
+// قابلیت «ویرایش/حذف رزرو توسط ادمین».
 //
 // PATCH  → لغو رزرو توسط ادمین همراه با ثبت اجباری «دلیل لغو» (cancelReason). اگر رزرو قبلاً
 //          به صورت قطعی (PAID_CONFIRMED) پرداخت شده باشد، مبلغ به‌صورت خودکار به کیف پول
@@ -12,12 +14,15 @@
 //          حذف باعث پاک شدن سابقه‌ی تراکنش‌های مالی نمی‌شود، چون ستون bookingId در جدول
 //          transactions با ON DELETE SET NULL تعریف شده است.
 //
-// دسترسی هر دو عملیات: فقط SUPER_ADMIN. طبق بخش ۵ سند فاز ۹، SUPPORT_AGENT فقط اجازه‌ی
-// مشاهده‌ی لیست رزروها را دارد، نه تغییر یا حذف — این‌ها اقدامات مالی/حساس محسوب می‌شوند.
+// 🔧 اصلاح بند ۳.۱ (۲۰۲۶/۰۷/۱۰): طبق تصمیم صریح کارفرما، از این پس ادمین پشتیبانی
+// (SUPPORT_AGENT) که دسترسی تب "bookings" به او داده شده، هم به همین PATCH/DELETE
+// دسترسی دارد — نه فقط SUPER_ADMIN. توجه: PATCH شامل بازگشت خودکار وجه به کیف‌پول
+// مسافر است و DELETE یک عملیات دائمی و غیرقابل بازگشت است؛ هر دو همچنان در
+// admin_audit_logs با شناسه‌ی همان ادمین پشتیبان ثبت می‌شوند تا در صورت نیاز قابل پیگیری باشند.
 
 import { NextRequest, NextResponse } from "next/server";
 import { supabaseAdmin } from "@/lib/supabase-admin";
-import { requireAdminRole, logAdminAction } from "@/lib/auth/adminAuth";
+import { requireAdminTabAccess, logAdminAction } from "@/lib/auth/adminAuth";
 import { sendBookingCancelledSms, sendRefundSms } from "@/lib/sms/smsService";
 import { formatPrice } from "@/utils/priceCalculator";
 
@@ -27,12 +32,9 @@ interface RouteContext {
 
 export async function PATCH(request: NextRequest, { params }: RouteContext) {
   try {
-    const admin = await requireAdminRole(request, ["SUPER_ADMIN"]);
+    const admin = await requireAdminTabAccess(request, "bookings");
     if (!admin) {
-      return NextResponse.json(
-        { success: false, error: "این عملیات فقط برای مدیر ارشد (SUPER_ADMIN) مجاز است" },
-        { status: 403 }
-      );
+      return NextResponse.json({ success: false, error: "دسترسی غیرمجاز" }, { status: 403 });
     }
 
     const { id: bookingId } = await params;
@@ -150,12 +152,9 @@ export async function PATCH(request: NextRequest, { params }: RouteContext) {
 
 export async function DELETE(request: NextRequest, { params }: RouteContext) {
   try {
-    const admin = await requireAdminRole(request, ["SUPER_ADMIN"]);
+    const admin = await requireAdminTabAccess(request, "bookings");
     if (!admin) {
-      return NextResponse.json(
-        { success: false, error: "این عملیات فقط برای مدیر ارشد (SUPER_ADMIN) مجاز است" },
-        { status: 403 }
-      );
+      return NextResponse.json({ success: false, error: "دسترسی غیرمجاز" }, { status: 403 });
     }
 
     const { id: bookingId } = await params;

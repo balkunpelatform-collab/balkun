@@ -1,11 +1,20 @@
+// این فایل جایگزین فایل فعلی شود در مسیر:
+// src/app/api/admin/accommodations/route.ts
+
 // مسیر: src/app/api/admin/accommodations/route.ts
 // رفع باگ: جایگزینی پکیج خارجی uuid با متد داخلی و استاندارد crypto.randomUUID()
-// 🆕 فاز ۱۱ / بخش ۳: GET حالا به‌جای requireAdminRole ساده، از requireAdminTabAccess
-// با کلید "accommodations" استفاده می‌کند تا SUPPORT_AGENT فقط در صورت داشتن این دسترسی وارد شود.
+// 🔧 اصلاح بند ۳.۱: POST (ثبت اقامتگاه جدید) هم مثل GET از requireAdminTabAccess
+// استفاده می‌کند تا ادمین پشتیبانی که دسترسی تب "accommodations" دارد بتواند
+// اقامتگاه ثبت کند (قبلاً این عملیات منحصراً برای SUPER_ADMIN بود).
+//
+// 🐛 رفع باگ (۲۰۲۶/۰۷/۱۰): قبلاً `Number(body.pricePerNight) || 0` فقط جلوی مقادیر
+// غیرعددی (NaN) را می‌گرفت، نه مقادیر منفی یا صفر — یعنی می‌شد اقامتگاهی با قیمت
+// منفی یا ظرفیت صفر ثبت کرد که همان لحظه در جستجو/جزئیات اتاق به کاربران واقعی
+// نمایش داده می‌شود. حالا پیش از ثبت، این مقادیر اعتبارسنجی می‌شوند.
 
 import { NextRequest, NextResponse } from "next/server";
 import { supabaseAdmin } from "@/lib/supabase-admin";
-import { requireAdminRole, requireAdminTabAccess } from "@/lib/auth/adminAuth";
+import { requireAdminTabAccess } from "@/lib/auth/adminAuth";
 import { CATEGORIES } from "@/constants/categories";
 import { Accommodation, AccommodationStatus } from "@/types/database";
 
@@ -54,24 +63,47 @@ export async function GET(request: NextRequest) {
 }
 
 export async function POST(request: NextRequest) {
-  const admin = await requireAdminRole(request, ["SUPER_ADMIN"]);
+  const admin = await requireAdminTabAccess(request, "accommodations");
   if (!admin) {
-    return NextResponse.json({ success: false, error: "فقط مدیر ارشد مجاز به ثبت اقامتگاه است" }, { status: 403 });
+    return NextResponse.json({ success: false, error: "دسترسی غیرمجاز" }, { status: 403 });
   }
 
   try {
     const body = await request.json();
-    
+
     // اعتبارسنجی دسته‌بندی با Constants
     const validCategoryIds = CATEGORIES.map(c => c.id);
     if (!validCategoryIds.includes(body.category)) {
       return NextResponse.json({ success: false, error: "دسته‌بندی انتخاب‌شده معتبر نیست" }, { status: 400 });
     }
 
+    if (body.status && !VALID_STATUSES.includes(body.status)) {
+      return NextResponse.json({ success: false, error: "وضعیت انتخاب‌شده معتبر نیست" }, { status: 400 });
+    }
+
+    // اعتبارسنجی مقادیر عددی — جلوگیری از قیمت/ظرفیت منفی یا صفر
+    const numericChecks: { field: string; min: number; label: string }[] = [
+      { field: "pricePerNight", min: 1, label: "قیمت شبی" },
+      { field: "maxGuests", min: 1, label: "ظرفیت مسافر" },
+      { field: "bedrooms", min: 0, label: "تعداد اتاق" },
+      { field: "bathrooms", min: 0, label: "تعداد سرویس بهداشتی" },
+      { field: "area", min: 1, label: "متراژ" },
+    ];
+
+    for (const { field, min, label } of numericChecks) {
+      const num = Number(body[field]);
+      if (!Number.isFinite(num) || num < min) {
+        return NextResponse.json(
+          { success: false, error: `مقدار «${label}» نامعتبر است (باید عددی و حداقل ${min} باشد)` },
+          { status: 400 }
+        );
+      }
+    }
+
     // استفاده از متد داخلی جاوااسکریپت به جای پکیج uuid
     const accommodationId = crypto.randomUUID();
     const now = new Date().toISOString();
-    
+
     const newAccommodation: Partial<Accommodation> = {
       id: accommodationId,
       adminId: admin.userId,
@@ -79,12 +111,12 @@ export async function POST(request: NextRequest) {
       description: body.description?.trim() || "",
       location: body.location?.trim() || "",
       address: body.address?.trim() || "",
-      pricePerNight: Number(body.pricePerNight) || 0,
+      pricePerNight: Number(body.pricePerNight),
       rating: 0,
-      maxGuests: Number(body.maxGuests) || 1,
-      bedrooms: Number(body.bedrooms) || 0,
-      bathrooms: Number(body.bathrooms) || 0,
-      area: Number(body.area) || 0,
+      maxGuests: Number(body.maxGuests),
+      bedrooms: Number(body.bedrooms),
+      bathrooms: Number(body.bathrooms),
+      area: Number(body.area),
       amenities: Array.isArray(body.amenities) ? body.amenities : [],
       images: Array.isArray(body.images) ? body.images : [],
       category: body.category,

@@ -1,4 +1,9 @@
 // مسیر: src/app/admin/accommodations/[id]/page.tsx
+//
+// 🐛 رفع باگ (۲۰۲۶/۰۷/۱۰): به عنوان یک لایه‌ی دفاعی اضافه (سرور هم این مقادیر را
+// اعتبارسنجی می‌کند)، به فیلدهای عددی `min` اضافه شد تا مرورگر جلوی وارد کردن
+// مقادیر منفی/صفر برای قیمت، ظرفیت و متراژ را بگیرد، و پیش از ارسال فرم هم یک
+// چک سریع سمت کلاینت اضافه شد تا کاربر پیام خطای فوری ببیند (نه بعد از رفت‌وبرگشت به سرور).
 
 "use client";
 
@@ -50,10 +55,28 @@ export default function AdminAccommodationFormPage({ params }: { params: Promise
     }
   };
 
+  // اعتبارسنجی سریع سمت کلاینت — سرور هم این‌ها را دوباره چک می‌کند، این فقط
+  // برای نمایش فوری پیام خطا به کاربر است، نه تنها خط دفاعی.
+  const validateForm = (): string | null => {
+    if (Number(formData.pricePerNight) < 1) return "قیمت شبی باید عددی مثبت باشد";
+    if (Number(formData.maxGuests) < 1) return "ظرفیت مسافر باید حداقل ۱ نفر باشد";
+    if (Number(formData.bedrooms) < 0) return "تعداد اتاق نمی‌تواند منفی باشد";
+    if (Number(formData.bathrooms) < 0) return "تعداد سرویس بهداشتی نمی‌تواند منفی باشد";
+    if (Number(formData.area) < 1) return "متراژ باید عددی مثبت باشد";
+    return null;
+  };
+
   const handleSubmit = async (e: React.FormEvent) => {
     e.preventDefault();
-    setIsSaving(true);
     setError("");
+
+    const validationError = validateForm();
+    if (validationError) {
+      setError(validationError);
+      return;
+    }
+
+    setIsSaving(true);
 
     const payload = {
       ...formData,
@@ -75,7 +98,7 @@ export default function AdminAccommodationFormPage({ params }: { params: Promise
         headers: { "Content-Type": "application/json" },
         body: JSON.stringify(payload)
       });
-      
+
       const data = await res.json();
       if (data.success) {
         router.push("/admin/accommodations");
@@ -153,19 +176,19 @@ export default function AdminAccommodationFormPage({ params }: { params: Promise
           <div className="grid grid-cols-2 md:grid-cols-4 gap-4">
             <div>
               <label className="text-xs font-bold text-slate-500 mb-1 block">قیمت شبی (تومان) *</label>
-              <input required type="number" value={formData.pricePerNight} onChange={e => setFormData({...formData, pricePerNight: e.target.value})} className="w-full bg-slate-50 border border-slate-200 rounded-xl px-4 py-2.5 text-sm font-bold outline-none dir-ltr" />
+              <input required type="number" min={1} step={1} value={formData.pricePerNight} onChange={e => setFormData({...formData, pricePerNight: e.target.value})} className="w-full bg-slate-50 border border-slate-200 rounded-xl px-4 py-2.5 text-sm font-bold outline-none dir-ltr" />
             </div>
             <div>
               <label className="text-xs font-bold text-slate-500 mb-1 block">ظرفیت مسافر *</label>
-              <input required type="number" value={formData.maxGuests} onChange={e => setFormData({...formData, maxGuests: e.target.value})} className="w-full bg-slate-50 border border-slate-200 rounded-xl px-4 py-2.5 text-sm font-bold outline-none" />
+              <input required type="number" min={1} step={1} value={formData.maxGuests} onChange={e => setFormData({...formData, maxGuests: e.target.value})} className="w-full bg-slate-50 border border-slate-200 rounded-xl px-4 py-2.5 text-sm font-bold outline-none" />
             </div>
             <div>
               <label className="text-xs font-bold text-slate-500 mb-1 block">تعداد اتاق</label>
-              <input type="number" value={formData.bedrooms} onChange={e => setFormData({...formData, bedrooms: e.target.value})} className="w-full bg-slate-50 border border-slate-200 rounded-xl px-4 py-2.5 text-sm font-bold outline-none" />
+              <input type="number" min={0} step={1} value={formData.bedrooms} onChange={e => setFormData({...formData, bedrooms: e.target.value})} className="w-full bg-slate-50 border border-slate-200 rounded-xl px-4 py-2.5 text-sm font-bold outline-none" />
             </div>
             <div>
               <label className="text-xs font-bold text-slate-500 mb-1 block">متراژ (متر)</label>
-              <input type="number" value={formData.area} onChange={e => setFormData({...formData, area: e.target.value})} className="w-full bg-slate-50 border border-slate-200 rounded-xl px-4 py-2.5 text-sm font-bold outline-none" />
+              <input type="number" min={1} step={1} value={formData.area} onChange={e => setFormData({...formData, area: e.target.value})} className="w-full bg-slate-50 border border-slate-200 rounded-xl px-4 py-2.5 text-sm font-bold outline-none" />
             </div>
           </div>
         </div>

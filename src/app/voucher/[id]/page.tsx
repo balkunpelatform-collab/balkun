@@ -1,12 +1,31 @@
+// مسیر: src/app/voucher/[id]/page.tsx
+// 🔒 اصلاحیه امنیتی (بند ۱.۱ تسک تکمیل):
+// قبلاً این صفحه بدون هیچ بررسی لاگین یا مالکیتی، اطلاعات رزرو (شامل نام، شماره موبایل و
+// کد ملی مهمان) را فقط با داشتن آیدی رزرو در آدرس، به هر بازدیدکننده‌ای نشان می‌داد.
+// از این پس: ۱) میدلور (src/middleware.ts) اجازه ورود به این صفحه را فقط به کاربر لاگین‌شده
+// می‌دهد، و ۲) همین‌جا هم چک می‌شود که این رزرو واقعاً متعلق به همان کاربر لاگین‌شده باشد؛
+// در غیر این صورت صفحه‌ی «یافت نشد» نمایش داده می‌شود (نه خطای دسترسی، تا اطلاعاتی درباره‌ی
+// وجود/عدم‌وجود رزرو به کاربر دیگر لو نرود).
+
 import { notFound } from "next/navigation";
+import { headers } from "next/headers";
 import Image from "next/image";
 import Link from "next/link";
 import { supabaseAdmin } from "@/lib/supabase-admin";
 import { formatPrice } from "@/utils/priceCalculator";
-import { CheckCircle2, MapPin, CalendarDays, Users, Printer, ArrowRight } from "lucide-react";
+import { CheckCircle2, MapPin, CalendarDays, Users, ArrowRight } from "lucide-react";
+import PrintVoucherButton from "@/components/voucher/PrintVoucherButton";
 
 export default async function VoucherPage({ params }: { params: Promise<{ id: string }> }) {
   const { id: bookingId } = await params;
+
+  // 🔒 شناسه کاربر لاگین‌شده را از هدر امن (تزریق‌شده توسط middleware) می‌خوانیم
+  const headersList = await headers();
+  const currentUserId = headersList.get("x-balkun-user-id");
+
+  if (!currentUserId) {
+    notFound();
+  }
 
   // دریافت اطلاعات رزرو از دیتابیس
   const { data: booking } = await supabaseAdmin
@@ -15,7 +34,8 @@ export default async function VoucherPage({ params }: { params: Promise<{ id: st
     .eq("id", bookingId)
     .single();
 
-  if (!booking || booking.status !== "PAID_CONFIRMED") {
+  // 🔒 بررسی مالکیت: این ووچر فقط باید توسط همان کاربری دیده شود که رزرو را ثبت کرده است
+  if (!booking || booking.status !== "PAID_CONFIRMED" || booking.userId !== currentUserId) {
     notFound();
   }
 
@@ -32,10 +52,7 @@ export default async function VoucherPage({ params }: { params: Promise<{ id: st
           <Link href="/profile" className="flex items-center gap-2 text-sm font-bold text-slate-500 hover:text-balkun-navy bg-white px-4 py-2 rounded-xl shadow-sm">
             <ArrowRight className="w-4 h-4" /> بازگشت به پروفایل
           </Link>
-          {/* دکمه پرینت/PDF مرورگر را صدا می‌زند */}
-          <button onClick={typeof window !== 'undefined' ? () => window.print() : undefined} className="flex items-center gap-2 text-sm font-bold text-white bg-balkun-cyan hover:bg-balkun-cyan-dark px-4 py-2 rounded-xl shadow-sm">
-            <Printer className="w-4 h-4" /> چاپ ووچر
-          </button>
+          <PrintVoucherButton />
         </div>
 
         {/* برگه ووچر */}

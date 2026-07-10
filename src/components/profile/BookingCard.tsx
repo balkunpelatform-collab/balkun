@@ -3,8 +3,9 @@
 import { useState } from "react";
 import { useRouter } from "next/navigation";
 import Link from "next/link";
-import { MapPin, Users, CalendarDays, Receipt, Loader2, XCircle, FileText } from "lucide-react";
+import { MapPin, Users, CalendarDays, Receipt, Loader2, XCircle, FileText, Lock } from "lucide-react";
 import { formatPrice } from "@/utils/priceCalculator";
+import { CANCELLATION_DEADLINE_HOURS } from "@/constants/booking";
 import type { Booking } from "@/types/database";
 
 const STATUS_MAP: Record<string, { label: string; color: string; bg: string }> = {
@@ -23,6 +24,12 @@ export default function BookingCard({ booking }: { booking: Booking }) {
   const checkIn = new Date(booking.checkInDate).toLocaleDateString("fa-IR");
   const checkOut = new Date(booking.checkOutDate).toLocaleDateString("fa-IR");
   const totalGuests = booking.basePersonCount + booking.extraPersonCount;
+
+  // 🆕 تسک ۱.۶ — آیا مهلت لغو رایگان این رزرو قطعی‌شده به پایان رسیده؟
+  // (فقط برای رزروهای PAID_CONFIRMED معنا دارد؛ رزروهای در انتظار پرداخت همیشه قابل لغو‌اند)
+  const hoursUntilCheckIn = (new Date(booking.checkInDate).getTime() - Date.now()) / (1000 * 60 * 60);
+  const isCancellationWindowClosed =
+    booking.status === "PAID_CONFIRMED" && hoursUntilCheckIn < CANCELLATION_DEADLINE_HOURS;
 
   // هندلر پرداخت
   const handlePayment = async () => {
@@ -106,8 +113,8 @@ export default function BookingCard({ booking }: { booking: Booking }) {
             </Link>
           )}
 
-          {/* امکان لغو برای رزروهای قطعی یا در انتظار پرداخت */}
-          {["WAITING_FOR_PAYMENT", "PAID_CONFIRMED"].includes(booking.status) && (
+          {/* امکان لغو برای رزروهای در انتظار پرداخت: همیشه و بدون محدودیت زمانی مجاز است */}
+          {booking.status === "WAITING_FOR_PAYMENT" && (
             <button 
               onClick={handleCancel}
               disabled={isProcessing}
@@ -115,6 +122,26 @@ export default function BookingCard({ booking }: { booking: Booking }) {
             >
               <XCircle className="w-4 h-4" /> لغو رزرو
             </button>
+          )}
+
+          {/* 🆕 تسک ۱.۶ — امکان لغو برای رزروهای قطعی: فقط تا CANCELLATION_DEADLINE_HOURS ساعت مانده به ورود */}
+          {booking.status === "PAID_CONFIRMED" && (
+            isCancellationWindowClosed ? (
+              <span
+                title={`مهلت لغو رایگان این رزرو (تا ${CANCELLATION_DEADLINE_HOURS} ساعت مانده به ورود) به پایان رسیده است`}
+                className="flex-1 md:flex-none bg-slate-50 text-slate-400 text-[11px] font-bold px-4 py-2.5 rounded-xl flex items-center justify-center gap-1.5 text-center cursor-not-allowed"
+              >
+                <Lock className="w-3.5 h-3.5" /> مهلت لغو رایگان تمام شده
+              </span>
+            ) : (
+              <button 
+                onClick={handleCancel}
+                disabled={isProcessing}
+                className="flex-1 md:flex-none bg-slate-100 text-slate-500 hover:bg-red-50 hover:text-red-500 text-xs font-bold px-4 py-2.5 rounded-xl transition-colors flex items-center justify-center gap-1.5 disabled:opacity-50"
+              >
+                <XCircle className="w-4 h-4" /> لغو رزرو
+              </button>
+            )
           )}
         </div>
       </div>

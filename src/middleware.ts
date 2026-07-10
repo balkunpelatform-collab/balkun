@@ -1,17 +1,21 @@
 // مسیر: src/middleware.ts
 // این فایل، خلأ امنیتی مستندشده در PHASE_8_USER_DASHBOARD.md (بخش ۳) را می‌بندد.
-// وظیفه: قبل از رسیدن درخواست به صفحات محافظت‌شده (/profile, /support, /admin) یا API های
+// وظیفه: قبل از رسیدن درخواست به صفحات محافظت‌شده (/profile, /support, /voucher, /admin) یا API های
 // زیر /api/user، /api/booking/create، /api/support و /api/admin، کوکی نشست را اعتبارسنجی می‌کند.
 // اگر معتبر نبود: صفحات ریدایرکت به /login می‌شوند و API‌ها خطای ۴۰۱ برمی‌گردانند.
 // اگر معتبر بود، شناسه کاربر را (که فقط از روی امضای سرور قابل استخراج است، نه از
 // ورودی کاربر) در هدر داخلی به Route Handler بعدی پاس می‌دهد.
 // 🆕 برای مسیرهای /admin و /api/admin، یک بررسی سریع نقش هم انجام می‌شود (فقط برای UX سریع؛
 // بررسی نهایی و معتبر همیشه در خود Route Handler با src/lib/auth/adminAuth.ts انجام می‌شود).
+// 🔒 اصلاحیه امنیتی (بند ۱.۱ تسک تکمیل): مسیر /voucher به لیست صفحات محافظت‌شده اضافه شد
+// تا دیگر هیچ‌کس بدون لاگین نتواند فقط با حدس زدن آیدی رزرو، به ووچر (شامل کد ملی و شماره
+// موبایل مهمان) دسترسی پیدا کند. بررسی مالکیت دقیق (اینکه این ووچر متعلق به همین کاربر است یا نه)
+// در خود فایل src/app/voucher/[id]/page.tsx انجام می‌شود.
 
 import { NextResponse, type NextRequest } from "next/server";
 import { verifySessionToken, SESSION_COOKIE } from "@/lib/auth/session";
 
-const PROTECTED_PAGE_PREFIXES = ["/profile", "/support"];
+const PROTECTED_PAGE_PREFIXES = ["/profile", "/support", "/voucher"];
 const ADMIN_PAGE_PREFIXES = ["/admin"];
 const PROTECTED_API_PREFIXES = ["/api/user", "/api/booking/create", "/api/support"];
 const ADMIN_API_PREFIXES = ["/api/admin"];
@@ -74,6 +78,7 @@ export const config = {
   matcher: [
     "/profile/:path*",
     "/support/:path*",
+    "/voucher/:path*",
     "/admin/:path*",
     "/api/user/:path*",
     "/api/booking/create",
