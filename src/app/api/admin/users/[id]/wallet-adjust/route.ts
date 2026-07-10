@@ -3,6 +3,11 @@
 // طبق سیاست مالی بالکن، کاربران هرگز نمی‌توانند موجودی را برداشت کنند؛ این مسیر فقط برای
 // شرایط خاص پشتیبانی (مثل جبران خسارت یا اصلاح خطا) است و ثبت لاگ اجباری در admin_audit_logs دارد.
 // دسترسی: فقط SUPER_ADMIN (عملیات مالی حساس طبق بخش ۵ سند فاز ۹).
+//
+// 🔧 اصلاحیه: متن لاگ ادمین قبلاً برای هر دو حالت شارژ (DEPOSIT) و کسر (WITHDRAWAL) از
+// عبارت «از کیف پول ...» استفاده می‌کرد که برای حالت شارژ از نظر معنایی درست نبود
+// (باید «به کیف پول» می‌بود). این تغییر فقط متن لاگ داخلی را اصلاح می‌کند و هیچ
+// تاثیری روی محاسبه‌ی موجودی یا رفتار سیستم ندارد.
 
 import { NextRequest, NextResponse } from "next/server";
 import { supabaseAdmin } from "@/lib/supabase-admin";
@@ -115,11 +120,12 @@ export async function POST(request: NextRequest, { params }: RouteContext) {
       adminId: admin.userId,
       actionType: "WALLET_ADJUST",
       targetUserId,
+      // 🔧 اصلاح‌شده: «به» برای شارژ (DEPOSIT) و «از» برای کسر (WITHDRAWAL)
       description: `${direction === "DEPOSIT" ? "شارژ دستی" : "کسر دستی"} ${numericAmount.toLocaleString(
         "fa-IR"
-      )} تومان از کیف پول ${walletType === "NORMAL" ? "عادی" : "سازمانی"} کاربر ${targetUser.firstName} ${
-        targetUser.lastName
-      } (${targetUser.phoneNumber}) — دلیل: ${reason.trim()}`,
+      )} تومان ${direction === "DEPOSIT" ? "به" : "از"} کیف پول ${
+        walletType === "NORMAL" ? "عادی" : "سازمانی"
+      } کاربر ${targetUser.firstName} ${targetUser.lastName} (${targetUser.phoneNumber}) — دلیل: ${reason.trim()}`,
       previousValue: String(currentBalance),
       newValue: String(newBalance),
     });
