@@ -9,6 +9,19 @@
 // این فایل به‌طور کامل کنار گذاشته می‌شود و فقط محصولات واقعی از اتاقک
 // (یا اقامتگاه‌های واقعی بالکن در Supabase) نمایش داده خواهند شد.
 // برای اطلاعات بیشتر src/lib/otaghak/config.ts را ببینید.
+//
+// 🛠 رفع باگ (گالری عکس نامرتبط):
+// قبلاً هر محصول علاوه بر عکس واقعی خودش، یک یا دو عکس عمومی
+// hero1.webp / hero2.webp را هم در گالری‌اش داشت. این دو عکس صرفاً
+// بک‌گراند صفحه‌ی اصلی هستند و به هیچ محصول خاصی تعلق ندارند؛ چون بین
+// چند محصولِ کاملاً بی‌ربط به هم (مثلاً سوییت، خارج‌کشور و ساحلی) مشترک
+// بودند، در گالری هر محصول عکسی از محصول دیگر/دسته‌بندی دیگر دیده می‌شد.
+// چون در حال حاضر برای هر محصول Mock فقط یک عکس واقعی وجود دارد، فیلد
+// gallery هر آیتم را به همان یک عکس واقعی محدود کردیم. کامپوننت
+// RoomGallery.tsx از قبل برای اسلات‌های خالیِ گالری، باکس خاکستری
+// placeholder نمایش می‌دهد؛ پس چیزی نمی‌شکند و دیگر هیچ عکس نامرتبطی
+// نشان داده نمی‌شود. وقتی عکس‌های واقعی بیشتری برای هر اقامتگاه آماده
+// شد، کافیست همان‌ها را به آرایه‌ی gallery همان آیتم اضافه کنید.
 
 export interface MockProperty {
   id: string;
@@ -52,7 +65,7 @@ export const MOCK_PROPERTIES: MockProperty[] = [
     extraPersonRawPrice: 400000,
     hostName: "علی رضایی",
     hostAvatar: "/logo.png",
-    gallery: ["/images/mock/villa.webp", "/hero1.webp", "/hero2.webp"],
+    gallery: ["/images/mock/villa.webp"],
     allFeatures: [
       "استخر آب‌گرم", "میز بیلیارد", "ویو ابدی", "پارکینگ اختصاصی",
       "وای‌فای پرسرعت", "باربیکیو", "سیستم گرمایش از کف", "آشپزخانه مجهز",
@@ -83,7 +96,7 @@ export const MOCK_PROPERTIES: MockProperty[] = [
     extraPersonRawPrice: 250000,
     hostName: "مریم احمدی",
     hostAvatar: "/logo.png",
-    gallery: ["/images/mock/cabin.webp", "/hero1.webp"],
+    gallery: ["/images/mock/cabin.webp"],
     allFeatures: [
       "شومینه هیزمی", "جکوزی", "در دل جنگل", "پارکینگ اختصاصی",
       "صبحانه رایگان", "وای‌فای رایگان",
@@ -113,7 +126,7 @@ export const MOCK_PROPERTIES: MockProperty[] = [
     extraPersonRawPrice: 600000,
     hostName: "امیر حسینی",
     hostAvatar: "/logo.png",
-    gallery: ["/images/mock/suite.webp", "/hero2.webp"],
+    gallery: ["/images/mock/suite.webp"],
     allFeatures: [
       "ویو ۳۶۰ درجه", "روف گاردن", "هوشمند", "پارکینگ",
       "استخر مشترک ساختمان", "سالن بدنسازی",
@@ -143,7 +156,7 @@ export const MOCK_PROPERTIES: MockProperty[] = [
     extraPersonRawPrice: 150000,
     hostName: "زهرا کاشانی",
     hostAvatar: "/logo.png",
-    gallery: ["/images/mock/eco.webp", "/hero1.webp"],
+    gallery: ["/images/mock/eco.webp"],
     allFeatures: [
       "حیاط مرکزی", "صبحانه سلف", "معماری قاجاری", "اتاق‌های سنتی",
       "باغچه اختصاصی",
@@ -173,7 +186,7 @@ export const MOCK_PROPERTIES: MockProperty[] = [
     extraPersonRawPrice: 1200000,
     hostName: "Mehmet Yilmaz",
     hostAvatar: "/logo.png",
-    gallery: ["/images/mock/abroad.webp", "/hero2.webp"],
+    gallery: ["/images/mock/abroad.webp"],
     allFeatures: [
       "ساحل اختصاصی", "آل اینکلوسیو", "پارک آبی", "اسپا و سونا",
       "چند رستوران",
@@ -203,7 +216,7 @@ export const MOCK_PROPERTIES: MockProperty[] = [
     extraPersonRawPrice: 300000,
     hostName: "رضا نوری",
     hostAvatar: "/logo.png",
-    gallery: ["/images/mock/forest.webp", "/hero1.webp"],
+    gallery: ["/images/mock/forest.webp"],
     allFeatures: [
       "سقف شیشه‌ای", "تراس معلق", "سکوت مطلق", "صبحانه محلی",
       "مسیر پیاده‌روی در جنگل",
@@ -233,7 +246,7 @@ export const MOCK_PROPERTIES: MockProperty[] = [
     extraPersonRawPrice: 500000,
     hostName: "سارا محمدی",
     hostAvatar: "/logo.png",
-    gallery: ["/images/mock/beach.webp", "/hero2.webp"],
+    gallery: ["/images/mock/beach.webp"],
     allFeatures: [
       "پلاک صفر دریا", "استخر رو به موج", "قایق اختصاصی",
       "باربیکیو ساحلی", "پارکینگ اختصاصی",
