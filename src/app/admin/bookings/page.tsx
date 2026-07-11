@@ -8,6 +8,9 @@
 //      برای جلوگیری از حذف تصادفی، چون این عملیات غیرقابل بازگشت است).
 // هر دو عملیات فقط برای SUPER_ADMIN فعال است؛ SUPPORT_AGENT همچنان فقط می‌تواند لیست را ببیند
 // (طبق سطح دسترسی تعریف‌شده در سند فاز ۹).
+//
+// 🆕 اصلاح مورد ۱ (۲۰۲۶/۰۷/۱۱): وضعیت "EXPIRED" (منقضی‌شده به دلیل عدم پرداخت در مهلت)
+// به STATUS_MAP و به لیست وضعیت‌های «غیرقابل لغو» اضافه شد.
 
 "use client";
 
@@ -22,6 +25,7 @@ const STATUS_MAP: Record<string, { label: string; color: string }> = {
   PAID_CONFIRMED: { label: "رزرو قطعی", color: "bg-green-100 text-green-700" },
   CANCELLED_BY_HOST: { label: "لغو توسط میزبان", color: "bg-red-50 text-red-600" },
   CANCELLED_BY_GUEST: { label: "لغو توسط مسافر", color: "bg-red-50 text-red-600" },
+  EXPIRED: { label: "منقضی‌شده (عدم پرداخت)", color: "bg-slate-100 text-slate-500" },
 };
 
 const DELETE_CONFIRM_WORD = "حذف";
@@ -145,7 +149,9 @@ export default function AdminBookingsPage() {
     }
   };
 
-  const isCancelled = (b: any) => ["CANCELLED_BY_GUEST", "CANCELLED_BY_HOST"].includes(b.status);
+  // 🆕 اصلاح مورد ۱: رزروهای EXPIRED هم قبلاً «تمام‌شده» محسوب می‌شوند، پس دکمه‌ی
+  // «لغو رزرو» برایشان معنا ندارد (فقط دکمه‌ی حذف دائمی در دسترس می‌ماند).
+  const isCancelled = (b: any) => ["CANCELLED_BY_GUEST", "CANCELLED_BY_HOST", "EXPIRED"].includes(b.status);
 
   return (
     <div className="flex flex-col gap-6 animate-in fade-in duration-500">

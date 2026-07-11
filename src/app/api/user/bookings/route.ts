@@ -1,10 +1,15 @@
 // مسیر: src/app/api/user/bookings/route.ts
 // این API رزروهای کاربر رو از دیتابیس می‌خونه و قانون مخفی‌سازی ۱۵ دقیقه‌ای رو روش اعمال می‌کنه.
 // شناسه کاربر از هدر امن x-balkun-user-id (تزریق‌شده توسط middleware) خوانده می‌شود.
+//
+// 🆕 اصلاح مورد ۱ (۲۰۲۶/۰۷/۱۱): قبل از خواندن لیست، رزروهای «در انتظار پرداخت»ی که
+// مهلتشان گذشته را برای همین کاربر منقضی می‌کنیم تا وضعیت درست‌شان (EXPIRED) را ببیند،
+// نه اینکه برای همیشه در وضعیت گمراه‌کننده‌ی «در انتظار پرداخت» بماند.
 
 import { NextRequest, NextResponse } from "next/server";
 import { supabaseAdmin } from "@/lib/supabase-admin";
 import type { Booking } from "@/types/database";
+import { expireStalePendingBookings } from "@/lib/booking/expirePendingBookings";
 
 export async function GET(request: NextRequest) {
   try {
@@ -12,6 +17,9 @@ export async function GET(request: NextRequest) {
     if (!userId) {
       return NextResponse.json({ success: false, error: "احراز هویت ناموفق" }, { status: 401 });
     }
+
+    // 🆕 اصلاح مورد ۱: پاک‌سازی تنبل (Lazy) رزروهای منقضی‌شده‌ی همین کاربر
+    await expireStalePendingBookings({ userId });
 
     const { data: bookings, error } = await supabaseAdmin
       .from("bookings")

@@ -1,5 +1,13 @@
+// مسیر: src/app/api/payment/request/route.ts
+//
+// 🆕 اصلاح مورد ۱ (۲۰۲۶/۰۷/۱۱): قبل از ساخت تراکنش و هدایت به درگاه، بررسی می‌کنیم
+// که مهلت پرداخت رزرو (PAYMENT_DEADLINE_MINUTES) هنوز نگذشته باشد. اگر گذشته باشد،
+// رزرو را همان لحظه به EXPIRED تغییر می‌دهیم و پیام روشنی به کاربر می‌دهیم — در غیر
+// این صورت کاربر به درگاه هدایت می‌شد ولی رزروش دیگر معتبر نبود.
+
 import { NextRequest, NextResponse } from "next/server";
 import { supabaseAdmin } from "@/lib/supabase-admin";
+import { expireStalePendingBookings, isPaymentDeadlinePassed } from "@/lib/booking/expirePendingBookings";
 
 export async function POST(req: NextRequest) {
   try {
@@ -25,13 +33,27 @@ export async function POST(req: NextRequest) {
         .maybeSingle();
 
       if (!booking) return NextResponse.json({ success: false, error: "رزرو یافت نشد" }, { status: 404 });
+
+      // 🆕 اصلاح مورد ۱: اگر مهلت پرداخت این رزرو گذشته، همین الان آن را منقضی می‌کنیم
+      // و اجازه نمی‌دهیم کاربر به درگاه هدایت شود.
+      if (booking.status === "WAITING_FOR_PAYMENT" && isPaymentDeadlinePassed(booking.createdAt)) {
+        await expireStalePendingBookings({ bookingId: booking.id });
+        return NextResponse.json(
+          {
+            success: false,
+            error: "مهلت پرداخت این رزرو به پایان رسیده و به‌صورت خودکار منقضی شده است. لطفاً یک رزرو جدید ثبت کنید.",
+          },
+          { status: 410 }
+        );
+      }
+
       if (booking.status !== "WAITING_FOR_PAYMENT") {
         return NextResponse.json({ success: false, error: "این رزرو قابل پرداخت نیست" }, { status: 400 });
       }
-      
+
       // امنیت: مبلغ را از دیتابیس می‌گیریم تا قابل دستکاری نباشد
       finalAmount = Number(booking.totalPaidAmount);
-    } 
+    }
     // ۲. پردازش شارژ کیف پول
     else if (type === "WALLET_CHARGE") {
       if (!finalAmount || finalAmount < 10000) {

@@ -4,6 +4,9 @@
 // ادمین‌ها باید مادام‌العمر به تمام رزروهای لغوشده (با دلیل) دسترسی داشته باشند.
 // 🆕 فاز ۱۱ / بخش ۳: دسترسی حالا از طریق requireAdminTabAccess با کلید "bookings"
 // کنترل می‌شود؛ SUPER_ADMIN بدون قیدوشرط و SUPPORT_AGENT فقط با داشتن این دسترسی وارد می‌شود.
+//
+// 🆕 اصلاح مورد ۱ (۲۰۲۶/۰۷/۱۱): "EXPIRED" به VALID_STATUSES اضافه شد تا فیلتر وضعیت
+// در پنل ادمین بتواند رزروهای منقضی‌شده (عدم پرداخت در مهلت) را هم نشان دهد.
 
 import { NextRequest, NextResponse } from "next/server";
 import { supabaseAdmin } from "@/lib/supabase-admin";
@@ -16,6 +19,7 @@ const VALID_STATUSES: BookingStatus[] = [
   "PAID_CONFIRMED",
   "CANCELLED_BY_HOST",
   "CANCELLED_BY_GUEST",
+  "EXPIRED",
 ];
 
 export async function GET(request: NextRequest) {

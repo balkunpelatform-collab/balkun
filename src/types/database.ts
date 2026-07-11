@@ -56,12 +56,18 @@ export interface Transaction {
 // ==========================================
 // 4. Bookings Collection (Otaghak Sync)
 // ==========================================
+// 🆕 اصلاح مورد ۱ (۲۰۲۶/۰۷/۱۱): وضعیت "EXPIRED" اضافه شد — برای رزروهایی که
+// در وضعیت WAITING_FOR_PAYMENT مانده‌اند و مهلت پرداختشان (به‌طور خودکار توسط
+// src/lib/booking/expirePendingBookings.ts) به پایان رسیده است. اگر این فایل
+// را جایگزین می‌کنید، حتماً migration مربوطه (بخش ۱۶ سند DATABASE_SQL_LOG.md)
+// را هم روی دیتابیس Supabase اجرا کنید تا ستون status این مقدار را بپذیرد.
 export type BookingStatus =
   | "WAITING_FOR_HOST"
   | "WAITING_FOR_PAYMENT"
   | "PAID_CONFIRMED"
   | "CANCELLED_BY_HOST"
-  | "CANCELLED_BY_GUEST";
+  | "CANCELLED_BY_GUEST"
+  | "EXPIRED";
 
 export interface Booking {
   id: string;

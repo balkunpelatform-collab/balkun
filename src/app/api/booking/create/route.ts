@@ -2,11 +2,17 @@
 // نکته امنیتی مهم: پیش‌تر userId مستقیماً از بدنه درخواست کلاینت خوانده می‌شد که یعنی
 // هر کاربر می‌توانست تئوریاً برای شناسه کاربری دیگری رزرو ثبت کند. از این پس userId
 // فقط از هدر امن x-balkun-user-id (تزریق‌شده توسط middleware پس از تایید نشست) خوانده می‌شود.
+//
+// 🆕 اصلاح مورد ۱ (۲۰۲۶/۰۷/۱۱): پیش از بررسی همپوشانی تاریخ، ابتدا رزروهای
+// «در انتظار پرداخت» که مهلتشان گذشته را برای همین اتاق منقضی می‌کنیم (Lazy
+// Expiration) — در غیر این صورت، رزروهای رهاشده و هرگز پرداخت‌نشده برای همیشه
+// جلوی رزرو مجدد همان تاریخ‌ها را می‌گرفتند.
 
 import { NextRequest, NextResponse } from "next/server";
 import { getRoomById } from "@/lib/otaghak/services/roomService";
 import { supabaseAdmin } from "@/lib/supabase-admin";
 import { isValidIranianNationalCode } from "@/utils/validateNationalCode";
+import { expireStalePendingBookings } from "@/lib/booking/expirePendingBookings";
 
 // همان الگوی تشخیص UUID که در roomService.ts استفاده شده: یعنی این اقامتگاه
 // مستقیماً توسط خود بالکن در جدول accommodations ثبت شده (نه از طریق اتاقک).
@@ -62,6 +68,11 @@ export async function POST(request: NextRequest) {
     // لایه‌ی نهایی و ضدِ Race-Condition همان Constraint سطح دیتابیس است که در پایین insert
     // هم مدیریت شده (کد خطای 23P01) — پیشنهاد SQL آن انتهای پیام چت آمده.
     if (UUID_REGEX.test(roomId)) {
+      // 🆕 اصلاح مورد ۱: قبل از هر چیز، رزروهای «در انتظار پرداخت» منقضی‌شده‌ی همین اتاق را
+      // پاک‌سازی می‌کنیم تا اگر واقعاً کسی پرداخت نکرده، تاریخ‌هایش آزاد شده و مانع رزرو
+      // جدید نشود. این عملیات غیرمخرب است و در صورت خطا فقط لاگ می‌شود.
+      await expireStalePendingBookings({ roomId });
+
       const { data: overlappingBookings, error: overlapError } = await supabaseAdmin
         .from("bookings")
         .select("id")

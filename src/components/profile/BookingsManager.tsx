@@ -46,8 +46,10 @@ export default function BookingsManager({ defaultTab, token }: BookingsManagerPr
   );
   
   // منطق ۱۵ دقیقه: رزروهای لغو شده توسط میزبان فقط ۱۵ دقیقه نمایش داده می‌شوند
+  // 🆕 اصلاح مورد ۱ (۲۰۲۶/۰۷/۱۱): رزروهای EXPIRED (پرداخت‌نشده و منقضی‌شده) هم به همین
+  // تب «لغو شده» اضافه شدند تا جایی برای دیدنشان وجود داشته باشد.
   const cancelledBookings = bookings.filter(b => {
-    if (!["CANCELLED_BY_HOST", "CANCELLED_BY_GUEST"].includes(b.status)) {
+    if (!["CANCELLED_BY_HOST", "CANCELLED_BY_GUEST", "EXPIRED"].includes(b.status)) {
       return false;
     }
     

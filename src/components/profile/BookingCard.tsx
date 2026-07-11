@@ -1,11 +1,14 @@
+// مسیر: src/components/profile/BookingCard.tsx
+
 "use client";
 
 import { useState } from "react";
 import { useRouter } from "next/navigation";
 import Link from "next/link";
-import { MapPin, Users, CalendarDays, Receipt, Loader2, XCircle, FileText, Lock } from "lucide-react";
+import { MapPin, Users, CalendarDays, Receipt, Loader2, XCircle, FileText, Lock, Wallet as WalletIcon, X, AlertTriangle } from "lucide-react";
 import { formatPrice } from "@/utils/priceCalculator";
 import { CANCELLATION_DEADLINE_HOURS } from "@/constants/booking";
+import { useAuthStore } from "@/store/authStore";
 import type { Booking } from "@/types/database";
 
 const STATUS_MAP: Record<string, { label: string; color: string; bg: string }> = {
@@ -14,16 +17,31 @@ const STATUS_MAP: Record<string, { label: string; color: string; bg: string }> =
   PAID_CONFIRMED: { label: "رزرو قطعی", color: "text-green-600", bg: "bg-green-100" },
   CANCELLED_BY_HOST: { label: "لغو توسط میزبان", color: "text-red-600", bg: "bg-red-50" },
   CANCELLED_BY_GUEST: { label: "لغو توسط مسافر", color: "text-red-600", bg: "bg-red-50" },
+  // 🆕 اصلاح مورد ۱ (۲۰۲۶/۰۷/۱۱): رزروهایی که پرداخت نشدند و مهلتشان تمام شد
+  EXPIRED: { label: "مهلت پرداخت تمام شد", color: "text-slate-500", bg: "bg-slate-100" },
 };
+
+// 🆕 تسک ۲ (۲۰۲۶/۰۷/۱۱) — پرداخت مستقیم رزرو از موجودی کیف پول
+type WalletBalances = { normalBalance: number; orgBalance: number };
 
 export default function BookingCard({ booking }: { booking: Booking }) {
   const router = useRouter();
+  const { user } = useAuthStore();
   const [isProcessing, setIsProcessing] = useState(false);
+
+  // مودال پرداخت از کیف پول
+  const [isWalletModalOpen, setIsWalletModalOpen] = useState(false);
+  const [isWalletLoading, setIsWalletLoading] = useState(false);
+  const [walletError, setWalletError] = useState("");
+  const [walletBalances, setWalletBalances] = useState<WalletBalances | null>(null);
+  const [selectedWalletType, setSelectedWalletType] = useState<"NORMAL" | "ORGANIZATIONAL">("NORMAL");
+  const [isPayingWithWallet, setIsPayingWithWallet] = useState(false);
 
   const statusInfo = STATUS_MAP[booking.status] || { label: "نامشخص", color: "text-slate-500", bg: "bg-slate-100" };
   const checkIn = new Date(booking.checkInDate).toLocaleDateString("fa-IR");
   const checkOut = new Date(booking.checkOutDate).toLocaleDateString("fa-IR");
   const totalGuests = booking.basePersonCount + booking.extraPersonCount;
+  const isOrganizational = user?.userType === "ORGANIZATIONAL";
 
   // 🆕 تسک ۱.۶ — آیا مهلت لغو رایگان این رزرو قطعی‌شده به پایان رسیده؟
   // (فقط برای رزروهای PAID_CONFIRMED معنا دارد؛ رزروهای در انتظار پرداخت همیشه قابل لغو‌اند)
@@ -31,7 +49,7 @@ export default function BookingCard({ booking }: { booking: Booking }) {
   const isCancellationWindowClosed =
     booking.status === "PAID_CONFIRMED" && hoursUntilCheckIn < CANCELLATION_DEADLINE_HOURS;
 
-  // هندلر پرداخت
+  // هندلر پرداخت از درگاه بانکی
   const handlePayment = async () => {
     setIsProcessing(true);
     try {
@@ -57,6 +75,61 @@ export default function BookingCard({ booking }: { booking: Booking }) {
     }
   };
 
+  // 🆕 تسک ۲ — باز کردن مودال پرداخت از کیف پول و دریافت موجودی به‌روز
+  const openWalletModal = async () => {
+    setIsWalletModalOpen(true);
+    setWalletError("");
+    setWalletBalances(null);
+    setSelectedWalletType(isOrganizational ? "ORGANIZATIONAL" : "NORMAL");
+    setIsWalletLoading(true);
+    try {
+      const res = await fetch("/api/user/wallet");
+      const data = await res.json();
+      if (data.success && data.wallet) {
+        const balances: WalletBalances = {
+          normalBalance: Number(data.wallet.normalBalance),
+          orgBalance: Number(data.wallet.orgBalance),
+        };
+        setWalletBalances(balances);
+        // پیش‌فرض هوشمند: اگر کاربر سازمانی است و موجودی سازمانی کافی دارد، همان انتخاب شود
+        if (isOrganizational && balances.orgBalance >= booking.totalPaidAmount) {
+          setSelectedWalletType("ORGANIZATIONAL");
+        } else {
+          setSelectedWalletType("NORMAL");
+        }
+      } else {
+        setWalletError(data.error || "خطا در دریافت موجودی کیف پول");
+      }
+    } catch {
+      setWalletError("خطای شبکه در دریافت موجودی کیف پول");
+    } finally {
+      setIsWalletLoading(false);
+    }
+  };
+
+  // 🆕 تسک ۲ — ثبت نهایی پرداخت از کیف پول
+  const handleWalletPayment = async () => {
+    setIsPayingWithWallet(true);
+    setWalletError("");
+    try {
+      const res = await fetch(`/api/user/bookings/${booking.id}/pay-with-wallet`, {
+        method: "POST",
+        headers: { "Content-Type": "application/json" },
+        body: JSON.stringify({ walletType: selectedWalletType }),
+      });
+      const data = await res.json();
+      if (data.success) {
+        window.location.reload(); // رفرش ساده برای نمایش وضعیت قطعی‌شده رزرو
+      } else {
+        setWalletError(data.error || "پرداخت از کیف پول ناموفق بود");
+      }
+    } catch {
+      setWalletError("خطای شبکه. لطفاً دوباره تلاش کنید.");
+    } finally {
+      setIsPayingWithWallet(false);
+    }
+  };
+
   // هندلر لغو رزرو
   const handleCancel = async () => {
     if (!confirm("آیا از لغو این رزرو اطمینان دارید؟ در صورت پرداخت، مبلغ به کیف پول شما عودت داده می‌شود.")) return;
@@ -77,9 +150,130 @@ export default function BookingCard({ booking }: { booking: Booking }) {
     }
   };
 
+  const selectedBalance = walletBalances
+    ? (selectedWalletType === "ORGANIZATIONAL" ? walletBalances.orgBalance : walletBalances.normalBalance)
+    : 0;
+  const hasEnoughBalance = walletBalances ? selectedBalance >= booking.totalPaidAmount : false;
+
   return (
     <div className="border border-slate-100 rounded-2xl p-4 md:p-5 hover:border-balkun-cyan/30 transition-colors shadow-sm flex flex-col gap-4">
-      
+
+      {/* 🆕 تسک ۲ — مودال پرداخت از کیف پول */}
+      {isWalletModalOpen && (
+        <div className="fixed inset-0 z-50 flex items-center justify-center p-4">
+          <div className="absolute inset-0 bg-black/60 backdrop-blur-sm" onClick={() => !isPayingWithWallet && setIsWalletModalOpen(false)}></div>
+          <div className="bg-white rounded-[2rem] p-6 max-w-sm w-full relative z-10 shadow-2xl">
+            <button
+              onClick={() => !isPayingWithWallet && setIsWalletModalOpen(false)}
+              className="absolute top-4 right-4 p-2 text-slate-400 hover:text-slate-700 bg-slate-50 rounded-full"
+            >
+              <X className="w-5 h-5" />
+            </button>
+
+            <div className="flex items-center gap-3 mb-2 mt-2">
+              <div className="w-11 h-11 bg-balkun-cyan/10 rounded-2xl flex items-center justify-center shrink-0">
+                <WalletIcon className="w-5 h-5 text-balkun-cyan" />
+              </div>
+              <h3 className="text-lg font-black text-balkun-navy">پرداخت از کیف پول</h3>
+            </div>
+
+            <p className="text-xs font-medium text-slate-500 mb-5">
+              مبلغ رزرو مستقیماً از موجودی کیف پول شما کسر می‌شود و رزرو بلافاصله قطعی خواهد شد.
+            </p>
+
+            {isWalletLoading ? (
+              <div className="flex flex-col items-center justify-center py-8 gap-3">
+                <Loader2 className="w-7 h-7 text-balkun-cyan animate-spin" />
+                <span className="text-xs font-bold text-slate-400">در حال دریافت موجودی کیف پول...</span>
+              </div>
+            ) : (
+              <div className="flex flex-col gap-4">
+                <div className="flex justify-between items-center bg-slate-50 rounded-xl p-4 border border-slate-100">
+                  <span className="text-xs font-bold text-slate-500">مبلغ قابل پرداخت</span>
+                  <span className="text-base font-black text-balkun-navy">
+                    {formatPrice(booking.totalPaidAmount)} <span className="text-[10px] font-bold text-slate-400">تومان</span>
+                  </span>
+                </div>
+
+                {walletBalances && (
+                  <div className="flex flex-col gap-2">
+                    <button
+                      onClick={() => setSelectedWalletType("NORMAL")}
+                      disabled={isPayingWithWallet}
+                      className={`w-full text-right rounded-xl border-2 p-3.5 transition-colors flex items-center justify-between gap-3 ${
+                        selectedWalletType === "NORMAL" ? "border-balkun-cyan bg-balkun-cyan/5" : "border-slate-100"
+                      } ${walletBalances.normalBalance < booking.totalPaidAmount ? "opacity-60" : ""}`}
+                    >
+                      <div className="flex flex-col items-start gap-0.5">
+                        <span className="text-xs font-black text-slate-700">کیف پول عادی</span>
+                        <span className="text-[10px] font-bold text-slate-400">
+                          موجودی: {formatPrice(walletBalances.normalBalance)} تومان
+                        </span>
+                      </div>
+                      {walletBalances.normalBalance < booking.totalPaidAmount && (
+                        <span className="text-[10px] font-bold text-red-500 shrink-0">کافی نیست</span>
+                      )}
+                    </button>
+
+                    {isOrganizational && (
+                      <button
+                        onClick={() => setSelectedWalletType("ORGANIZATIONAL")}
+                        disabled={isPayingWithWallet}
+                        className={`w-full text-right rounded-xl border-2 p-3.5 transition-colors flex items-center justify-between gap-3 ${
+                          selectedWalletType === "ORGANIZATIONAL" ? "border-balkun-orange bg-balkun-orange/5" : "border-slate-100"
+                        } ${walletBalances.orgBalance < booking.totalPaidAmount ? "opacity-60" : ""}`}
+                      >
+                        <div className="flex flex-col items-start gap-0.5">
+                          <span className="text-xs font-black text-slate-700">کیف پول سازمانی</span>
+                          <span className="text-[10px] font-bold text-slate-400">
+                            موجودی: {formatPrice(walletBalances.orgBalance)} تومان
+                          </span>
+                        </div>
+                        {walletBalances.orgBalance < booking.totalPaidAmount && (
+                          <span className="text-[10px] font-bold text-red-500 shrink-0">کافی نیست</span>
+                        )}
+                      </button>
+                    )}
+                  </div>
+                )}
+
+                {!hasEnoughBalance && walletBalances && (
+                  <div className="bg-balkun-yellow/10 border border-balkun-yellow/20 rounded-xl p-3 flex gap-2.5">
+                    <AlertTriangle className="w-4 h-4 text-balkun-yellow shrink-0 mt-0.5" />
+                    <p className="text-[11px] font-bold text-slate-600 leading-relaxed">
+                      موجودی این کیف پول کافی نیست. می‌توانید ابتدا از بخش «کیف پول» موجودی را افزایش دهید یا از پرداخت آنلاین استفاده کنید.
+                    </p>
+                  </div>
+                )}
+
+                {walletError && (
+                  <div className="bg-red-50 text-red-600 p-3 rounded-xl text-[11px] font-bold text-center">
+                    {walletError}
+                  </div>
+                )}
+
+                <button
+                  onClick={handleWalletPayment}
+                  disabled={isPayingWithWallet || !hasEnoughBalance}
+                  className="w-full bg-balkun-cyan hover:bg-balkun-cyan-dark text-white font-bold py-3.5 rounded-xl transition-all shadow-lg shadow-balkun-cyan/20 disabled:opacity-50 flex items-center justify-center gap-2"
+                >
+                  {isPayingWithWallet ? <Loader2 className="w-5 h-5 animate-spin" /> : "تایید و پرداخت از کیف پول"}
+                </button>
+
+                {!hasEnoughBalance && (
+                  <Link
+                    href="/profile?tab=wallet"
+                    className="text-center text-[11px] font-bold text-balkun-cyan hover:underline -mt-1"
+                  >
+                    افزایش موجودی کیف پول
+                  </Link>
+                )}
+              </div>
+            )}
+          </div>
+        </div>
+      )}
+
       <div className="flex flex-col md:flex-row justify-between items-start md:items-center gap-4">
         <div className="flex flex-col gap-2">
           <span className={`text-[10px] md:text-xs font-black px-3 py-1.5 rounded-lg w-max ${statusInfo.bg} ${statusInfo.color}`}>
@@ -100,6 +294,17 @@ export default function BookingCard({ booking }: { booking: Booking }) {
               className="flex-1 md:flex-none bg-balkun-orange text-white text-xs font-bold px-4 py-2.5 rounded-xl shadow-md shadow-balkun-orange/20 hover:-translate-y-0.5 transition-transform flex items-center justify-center gap-2 disabled:opacity-50"
             >
               {isProcessing ? <Loader2 className="w-4 h-4 animate-spin"/> : "پرداخت آنلاین"}
+            </button>
+          )}
+
+          {/* 🆕 تسک ۲ — پرداخت مستقیم از کیف پول */}
+          {booking.status === "WAITING_FOR_PAYMENT" && (
+            <button
+              onClick={openWalletModal}
+              disabled={isProcessing}
+              className="flex-1 md:flex-none bg-white text-balkun-cyan border-2 border-balkun-cyan text-xs font-bold px-4 py-2.5 rounded-xl hover:bg-balkun-cyan/5 transition-colors flex items-center justify-center gap-2 disabled:opacity-50"
+            >
+              <WalletIcon className="w-4 h-4" /> پرداخت از کیف پول
             </button>
           )}
 
