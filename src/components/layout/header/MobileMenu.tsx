@@ -15,6 +15,10 @@
 // داخل document.body رندر می‌کنیم. این‌طوری، هیچ استایلی که در آینده به‌طور اتفاقی به هدر یا
 // هر جد دیگری اضافه شود (backdrop-blur، transform، filter، will-change و ...) دیگر روی این
 // منو تاثیری نخواهد گذاشت — چون کلاً بیرون از آن درخت DOM قرار می‌گیرد.
+//
+// 🐛→✅ تسک ۱۹: رفع خطای 404 در منوی «کیف پول» — لینک از مسیر ناموجود «/wallet»
+// به مسیر واقعی صفحه‌ی پروفایل با تب کیف پول یعنی «/profile?tab=wallet» اصلاح شد
+// (طبق src/app/profile/page.tsx فقط چنین مسیری صفحه‌ی WalletView را رندر می‌کند)
 
 "use client";
 
@@ -137,7 +141,7 @@ export default function MobileMenu({ isOpen, onClose, user, isAuthenticated, onL
                 <User className="w-4 h-4" /> پروفایل من
               </Link>
               <Link
-                href="/wallet"
+                href="/profile?tab=wallet"
                 onClick={onClose}
                 className="flex items-center gap-2 px-5 py-3 text-slate-700 hover:bg-slate-50 hover:text-balkun-cyan font-medium transition-colors"
               >

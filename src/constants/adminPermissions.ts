@@ -13,8 +13,13 @@
 // سازمانی). مثل بلاگ، این تب هم مالی/حساس نیست (خودِ عملیات شارژ کیف پول یا
 // تغییر نقش کاربر همچنان منحصراً SUPER_ADMIN است و از این تب انجام نمی‌شود)،
 // پس برای SUPPORT_AGENT هم قابل واگذاری است.
+//
+// 🆕 تب "banners" اضافه شد (تسک ۱۸ چک‌لیست کارفرما): مدیریت بنرهای اسلایدر
+// صفحه اول (عکس، متن، کمپین/جشنواره، لینک، ترتیب و فعال/غیرفعال بودن). دقیقاً
+// هم‌الگو با "blog" — محتوایی است، نه مالی/حساس، پس برای SUPPORT_AGENT هم
+// قابل واگذاری است.
 
-export const ADMIN_TAB_KEYS = ["accommodations", "bookings", "tickets", "logs", "blog", "corporate"] as const;
+export const ADMIN_TAB_KEYS = ["accommodations", "bookings", "tickets", "logs", "blog", "corporate", "banners"] as const;
 
 export type AdminTabKey = (typeof ADMIN_TAB_KEYS)[number];
 
@@ -25,6 +30,7 @@ export const ADMIN_TAB_LABELS: Record<AdminTabKey, string> = {
   logs: "لاگ‌های سیستم",
   blog: "مدیریت بلاگ",
   corporate: "سازمانی",
+  banners: "بنر اصلی صفحه اول",
 };
 
 export function isValidAdminTabKey(value: string): value is AdminTabKey {

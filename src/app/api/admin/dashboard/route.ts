@@ -1,16 +1,19 @@
 // مسیر: src/app/api/admin/dashboard/route.ts
 // GET: شاخص‌های کلیدی داشبورد ادمین (KPIs) طبق بخش ۱ سند فاز ۹.
-// چون شامل ارقام مالی حساس (درآمد حاصل از حاشیه سود ۵٪) است، فقط SUPER_ADMIN مجاز است
+// چون شامل ارقام مالی حساس (درآمد حاصل از حاشیه سود ۵٪) است، فقط نقش‌های مالی/ارشد مجازند
 // (طبق بخش ۵ سند فاز ۹: SUPPORT_AGENT فقط به تیکت‌ها و لیست رزروها دسترسی دارد، نه گزارش مالی).
 // 🆕 KPI «درخواست‌های سازمانی خوانده‌نشده» اضافه شد تا مدیر ارشد بلافاصله بعد از
 // ورود به داشبورد، از درخواست‌های جدید صفحه‌ی /corporate مطلع شود.
+// 🆕 تسک ۳ (دسترسی داشبورد برای مدیر مالی): نقش FINANCE_MANAGER به لیست نقش‌های مجاز
+// این روت اضافه شد. این روت فقط-خواندنی است (GET)، پس این تغییر هیچ عملیات نوشتنی/حساسی
+// را برای مدیر مالی باز نمی‌کند؛ فقط همان KPI هایی که مدیر ارشد می‌بیند را نمایش می‌دهد.
 
 import { NextRequest, NextResponse } from "next/server";
 import { supabaseAdmin } from "@/lib/supabase-admin";
 import { requireAdminRole } from "@/lib/auth/adminAuth";
 
 export async function GET(request: NextRequest) {
-  const admin = await requireAdminRole(request, ["SUPER_ADMIN"]);
+  const admin = await requireAdminRole(request, ["SUPER_ADMIN", "FINANCE_MANAGER"]);
   if (!admin) {
     return NextResponse.json({ success: false, error: "دسترسی غیرمجاز" }, { status: 403 });
   }

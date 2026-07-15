@@ -7,11 +7,15 @@
 // «در انتظار پرداخت» که مهلتشان گذشته را برای همین اتاق منقضی می‌کنیم (Lazy
 // Expiration) — در غیر این صورت، رزروهای رهاشده و هرگز پرداخت‌نشده برای همیشه
 // جلوی رزرو مجدد همان تاریخ‌ها را می‌گرفتند.
+//
+// 🆕 تسک ۲۱: دریافت و اعتبارسنجی «کد ملی» طبق درخواست کارفرما حذف شد (این فیلد
+// اصلاً به اتاقک ارسال نمی‌شد، فقط در دیتابیس بالکن ذخیره می‌شد و دیگر لازم نیست).
+// ستون nationalCode جدول bookings از قبل nullable بود، پس نیازی به migration
+// دیتابیس نبود؛ رکوردهای جدید بدون این مقدار (NULL) ثبت می‌شوند.
 
 import { NextRequest, NextResponse } from "next/server";
 import { getRoomById } from "@/lib/otaghak/services/roomService";
 import { supabaseAdmin } from "@/lib/supabase-admin";
-import { isValidIranianNationalCode } from "@/utils/validateNationalCode";
 import { expireStalePendingBookings } from "@/lib/booking/expirePendingBookings";
 
 // همان الگوی تشخیص UUID که در roomService.ts استفاده شده: یعنی این اقامتگاه
@@ -28,15 +32,10 @@ export async function POST(request: NextRequest) {
       );
     }
 
-    const { roomId, checkinUnix, checkoutUnix, guests, nationalCode } = await request.json();
+    const { roomId, checkinUnix, checkoutUnix, guests } = await request.json();
 
-    if (!roomId || !checkinUnix || !checkoutUnix || !guests || !nationalCode) {
+    if (!roomId || !checkinUnix || !checkoutUnix || !guests) {
       return NextResponse.json({ success: false, error: "اطلاعات ناقص است" }, { status: 400 });
-    }
-
-    // ۰. اعتبارسنجی کد ملی در سمت سرور (الزامی - نباید فقط به فرانت‌اند اعتماد کرد)
-    if (!isValidIranianNationalCode(String(nationalCode))) {
-      return NextResponse.json({ success: false, error: "کد ملی واردشده معتبر نیست" }, { status: 400 });
     }
 
     // ۱. دریافت مجدد اطلاعات اقامتگاه به صورت امن (این دیتا ۵٪ بالکن رو از قبل داره)
@@ -110,7 +109,6 @@ export async function POST(request: NextRequest) {
           checkOutDate,
           basePersonCount: room.personCapacity,
           extraPersonCount: extraGuests,
-          nationalCode: String(nationalCode),
           totalPaidAmount,
           status: "WAITING_FOR_PAYMENT", // فعلا منتظر پرداخته (در فاز ۶ به درگاه وصل می‌شه)
           isVisibleForUser: true,

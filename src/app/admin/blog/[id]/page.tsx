@@ -1,7 +1,16 @@
 // مسیر: src/app/admin/blog/[id]/page.tsx
 // فرم ایجاد/ویرایش پست بلاگ (دقیقاً هم‌الگو با admin/accommodations/[id]/page.tsx):
 // وقتی id برابر رشته‌ی "new" باشد، فرم در حالت «ایجاد» است.
-// 🆕 این صفحه اولین مصرف‌کننده‌ی واقعی روت آپلود تصویر (api/admin/upload) در کل پروژه است.
+// این صفحه اولین مصرف‌کننده‌ی واقعی روت آپلود تصویر (api/admin/upload) در کل پروژه است.
+//
+// 🆕 تسک ۵ چک‌لیست کارفرما (تصاویر باید به‌صورت لینک قرار داده شوند + خطای 404 در بلاگ):
+// ۱) علاوه بر آپلود فایل از روی دستگاه، حالا یک حالت دوم هم اضافه شد: چسباندن مستقیم
+//    «لینک تصویر» (آدرس اینترنتی یک عکس از جای دیگر). چون ستون coverImage در دیتابیس
+//    از قبل صرفاً یک متن (URL) است، این حالت نیازی به تغییر دیتابیس نداشت.
+// ۲) کنار فیلد «وضعیت انتشار» یک تذکر واضح اضافه شد: تا وقتی پست روی «منتشر شده»
+//    تنظیم نشود، لینک عمومی آن (/blog/...) در سایت باز نمی‌شود و صفحه‌اش ۴۰۴ (یافت
+//    نشد) نشان می‌دهد — این رفتار همیشه همینطور بوده، اما چون در پنل قدیم جایی گفته
+//    نشده بود، باعث می‌شد افراد غیرفنی گمان کنند بلاگ «خراب» است.
 
 "use client";
 
@@ -10,7 +19,7 @@ import { useRouter } from "next/navigation";
 import Image from "next/image";
 import {
   ArrowRight, Save, Loader2, FileText, Image as ImageIcon,
-  Search as SearchIcon, UploadCloud, X
+  Search as SearchIcon, UploadCloud, X, Link as LinkIcon, AlertTriangle
 } from "lucide-react";
 import { BLOG_CATEGORIES } from "@/constants/blogCategories";
 import { generateSlugFromTitle } from "@/utils/generateSlug";
@@ -25,6 +34,10 @@ export default function AdminBlogFormPage({ params }: { params: Promise<{ id: st
   const [isUploading, setIsUploading] = useState(false);
   const [error, setError] = useState("");
   const [slugTouched, setSlugTouched] = useState(false);
+
+  // 🆕 تسک ۵: نحوه‌ی تامین تصویر کاور — آپلود فایل یا چسباندن لینک
+  const [imageMode, setImageMode] = useState<"upload" | "link">("upload");
+  const [imageLinkInput, setImageLinkInput] = useState("");
 
   const [formData, setFormData] = useState({
     title: "", slug: "", excerpt: "", content: "",
@@ -49,6 +62,7 @@ export default function AdminBlogFormPage({ params }: { params: Promise<{ id: st
           tags: post.tags?.join("، ") || "", status: post.status,
           metaTitle: post.metaTitle || "", metaDescription: post.metaDescription || "",
         });
+        setImageLinkInput(post.coverImage || "");
         setSlugTouched(true);
       } else {
         setError(data.error);
@@ -80,6 +94,7 @@ export default function AdminBlogFormPage({ params }: { params: Promise<{ id: st
       const data = await res.json();
       if (data.success) {
         setFormData((prev) => ({ ...prev, coverImage: data.url }));
+        setImageLinkInput(data.url);
       } else {
         setError(data.error || "خطا در آپلود تصویر");
       }
@@ -88,6 +103,20 @@ export default function AdminBlogFormPage({ params }: { params: Promise<{ id: st
     } finally {
       setIsUploading(false);
     }
+  };
+
+  const handleApplyImageLink = () => {
+    const trimmed = imageLinkInput.trim();
+    if (!trimmed) {
+      setError("لینک تصویر را وارد کنید");
+      return;
+    }
+    if (!/^https?:\/\//i.test(trimmed)) {
+      setError("لینک تصویر باید با http:// یا https:// شروع شود");
+      return;
+    }
+    setError("");
+    setFormData((prev) => ({ ...prev, coverImage: trimmed }));
   };
 
   const handleSubmit = async (e: React.FormEvent) => {
@@ -173,7 +202,10 @@ export default function AdminBlogFormPage({ params }: { params: Promise<{ id: st
             <textarea required rows={2} value={formData.excerpt} onChange={e => setFormData({...formData, excerpt: e.target.value})} className="w-full bg-slate-50 border border-slate-200 rounded-xl px-4 py-3 text-sm font-medium focus:border-balkun-cyan outline-none resize-none" />
           </div>
           <div>
-            <label className="text-xs font-bold text-slate-500 mb-1 block">متن کامل پست *</label>
+            <label className="text-xs font-bold text-slate-500 mb-1 block">
+              متن کامل پست *
+              <span className="text-slate-400 font-medium"> — برای شروع پاراگراف جدید، کافی است Enter بزنید</span>
+            </label>
             <textarea required rows={14} value={formData.content} onChange={e => setFormData({...formData, content: e.target.value})} placeholder="هر پاراگراف را با یک خط خالی از پاراگراف بعدی جدا کنید." className="w-full bg-slate-50 border border-slate-200 rounded-xl px-4 py-3 text-sm font-medium focus:border-balkun-cyan outline-none resize-none leading-loose" />
           </div>
         </div>
@@ -185,27 +217,65 @@ export default function AdminBlogFormPage({ params }: { params: Promise<{ id: st
           </h2>
           <div>
             <label className="text-xs font-bold text-slate-500 mb-1 block">تصویر کاور پست</label>
+
             {formData.coverImage && (
-              <div className="relative w-full max-w-sm h-44 rounded-xl overflow-hidden border border-slate-200 mb-3">
+              <div className="relative w-full max-w-sm h-44 rounded-xl overflow-hidden border border-slate-200 mb-3 bg-slate-50">
                 <Image src={formData.coverImage} alt="تصویر کاور" fill className="object-cover" sizes="384px" />
                 <button
                   type="button"
-                  onClick={() => setFormData({...formData, coverImage: ""})}
+                  onClick={() => { setFormData({...formData, coverImage: ""}); setImageLinkInput(""); }}
                   className="absolute top-2 left-2 p-1.5 bg-black/60 text-white rounded-lg hover:bg-black/80"
                 >
                   <X className="w-4 h-4" />
                 </button>
               </div>
             )}
-            <label className="flex items-center gap-2 w-full max-w-sm justify-center bg-slate-50 border border-dashed border-slate-300 rounded-xl px-4 py-3 text-sm font-bold text-slate-500 cursor-pointer hover:border-balkun-cyan hover:text-balkun-cyan transition-colors">
-              {isUploading ? <Loader2 className="w-4 h-4 animate-spin" /> : <UploadCloud className="w-4 h-4" />}
-              {isUploading ? "در حال آپلود..." : "انتخاب و آپلود تصویر (حداکثر ۲ مگابایت)"}
-              <input
-                type="file" accept="image/png, image/jpeg, image/webp, image/gif" className="hidden"
-                disabled={isUploading}
-                onChange={(e) => { const file = e.target.files?.[0]; if (file) handleImageUpload(file); e.target.value = ""; }}
-              />
-            </label>
+
+            {/* 🆕 تسک ۵: انتخاب بین «آپلود فایل» و «لینک تصویر» */}
+            <div className="flex items-center gap-2 mb-3">
+              <button
+                type="button"
+                onClick={() => setImageMode("upload")}
+                className={`flex items-center gap-1.5 px-3 py-1.5 rounded-lg text-xs font-bold transition-colors ${imageMode === "upload" ? "bg-balkun-cyan text-white" : "bg-slate-100 text-slate-500 hover:bg-slate-200"}`}
+              >
+                <UploadCloud className="w-3.5 h-3.5" /> آپلود از دستگاه
+              </button>
+              <button
+                type="button"
+                onClick={() => setImageMode("link")}
+                className={`flex items-center gap-1.5 px-3 py-1.5 rounded-lg text-xs font-bold transition-colors ${imageMode === "link" ? "bg-balkun-cyan text-white" : "bg-slate-100 text-slate-500 hover:bg-slate-200"}`}
+              >
+                <LinkIcon className="w-3.5 h-3.5" /> استفاده از لینک تصویر
+              </button>
+            </div>
+
+            {imageMode === "upload" ? (
+              <label className="flex items-center gap-2 w-full max-w-sm justify-center bg-slate-50 border border-dashed border-slate-300 rounded-xl px-4 py-3 text-sm font-bold text-slate-500 cursor-pointer hover:border-balkun-cyan hover:text-balkun-cyan transition-colors">
+                {isUploading ? <Loader2 className="w-4 h-4 animate-spin" /> : <UploadCloud className="w-4 h-4" />}
+                {isUploading ? "در حال آپلود..." : "انتخاب و آپلود تصویر (حداکثر ۲ مگابایت)"}
+                <input
+                  type="file" accept="image/png, image/jpeg, image/webp, image/gif" className="hidden"
+                  disabled={isUploading}
+                  onChange={(e) => { const file = e.target.files?.[0]; if (file) handleImageUpload(file); e.target.value = ""; }}
+                />
+              </label>
+            ) : (
+              <div className="flex items-center gap-2 w-full max-w-sm">
+                <input
+                  type="text" dir="ltr" placeholder="https://example.com/image.jpg"
+                  value={imageLinkInput}
+                  onChange={(e) => setImageLinkInput(e.target.value)}
+                  className="flex-1 bg-slate-50 border border-slate-200 rounded-xl px-3 py-2.5 text-sm font-medium focus:border-balkun-cyan outline-none text-left"
+                />
+                <button
+                  type="button"
+                  onClick={handleApplyImageLink}
+                  className="bg-balkun-navy text-white px-4 py-2.5 rounded-xl text-xs font-bold hover:bg-balkun-navy/90 transition-colors shrink-0"
+                >
+                  اعمال لینک
+                </button>
+              </div>
+            )}
           </div>
           <div>
             <label className="text-xs font-bold text-slate-500 mb-1 block">برچسب‌ها (با ویرگول فارسی «،» جدا کنید)</label>
@@ -217,6 +287,17 @@ export default function AdminBlogFormPage({ params }: { params: Promise<{ id: st
               <option value="DRAFT">پیش‌نویس (فقط در پنل قابل مشاهده)</option>
               <option value="PUBLISHED">منتشر شده (نمایش عمومی در سایت)</option>
             </select>
+            {/* 🆕 تسک ۵: تذکر واضح درباره‌ی رفتار پیش‌نویس، برای جلوگیری از گیج‌شدن با خطای ۴۰۴ */}
+            {formData.status === "DRAFT" && (
+              <div className="flex items-start gap-2 mt-2 bg-amber-50 text-amber-700 border border-amber-200 rounded-xl px-3 py-2.5 text-xs font-bold leading-relaxed">
+                <AlertTriangle className="w-4 h-4 shrink-0 mt-0.5" />
+                <span>
+                  این پست هنوز «پیش‌نویس» است و روی سایت نمایش داده نمی‌شود؛ اگر همین حالا آدرس آن
+                  را باز کنید، صفحه «یافت نشد (۴۰۴)» می‌دهد. برای نمایش عمومی، وضعیت را به
+                  «منتشر شده» تغییر دهید و ذخیره کنید.
+                </span>
+              </div>
+            )}
           </div>
         </div>
 

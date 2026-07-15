@@ -3,13 +3,15 @@
 // ("accommodations" و "blog") انتخاب می‌کند. فیلد اختیاری "bucket" در FormData
 // مشخص می‌کند تصویر برای کدام بخش آپلود می‌شود؛ اگر ارسال نشود یا نامعتبر باشد،
 // پیش‌فرض همان "accommodations" قبلی باقی می‌ماند (سازگار با فراخوانی‌های قبلی).
+// 🆕 تسک ۱۸ چک‌لیست کارفرما (امکان تغییر بنر اصلی صفحه اول): باکت سوم "banners"
+// اضافه شد تا تصاویر بنر اسلایدر صفحه اول هم از همین روت مشترک آپلود شوند.
 
 import { NextRequest, NextResponse } from "next/server";
 import { supabaseAdmin } from "@/lib/supabase-admin";
 import { requireAdminRole } from "@/lib/auth/adminAuth";
 import sharp from "sharp";
 
-const ALLOWED_BUCKETS = ["accommodations", "blog"] as const;
+const ALLOWED_BUCKETS = ["accommodations", "blog", "banners"] as const;
 type AllowedBucket = (typeof ALLOWED_BUCKETS)[number];
 
 function isAllowedBucket(value: string): value is AllowedBucket {
@@ -41,7 +43,7 @@ export async function POST(request: NextRequest) {
 
     const timestamp = Date.now();
     const randomString = Math.random().toString(36).substring(2, 8);
-    const prefix = bucket === "blog" ? "balkun-blog" : "balkun-exclusive";
+    const prefix = bucket === "blog" ? "balkun-blog" : bucket === "banners" ? "balkun-banner" : "balkun-exclusive";
     const fileName = `${prefix}-${timestamp}-${randomString}.webp`;
     const filePath = `images/${fileName}`;
 

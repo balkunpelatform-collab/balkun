@@ -7,7 +7,12 @@
 // 1. Users Collection
 // ==========================================
 export type UserType = "NORMAL" | "ORGANIZATIONAL";
-export type UserRole = "USER" | "SUPPORT_AGENT" | "SUPER_ADMIN";
+// 🆕 تسک ۱ (تاریخچه کیف پول برای مالی و مدیر ارشد) — نقش FINANCE_MANAGER اضافه شد.
+// این نقش برای دسترسی‌های مالی/گزارشی سطح‌بالا استفاده می‌شود (تاریخچه کامل کیف پول،
+// و در تسک‌های بعدی: داشبورد، کاربران، پرداخت‌ها). برخلاف SUPPORT_AGENT، دسترسی این نقش
+// به تب‌های سیستم permissions وابسته نیست؛ دقیقاً مثل SUPER_ADMIN یک نقش با دامنه‌ی
+// دسترسی ثابت (Fixed-scope role) است، با این تفاوت که دامنه‌اش محدودتر و کاملاً مالی/گزارشی است.
+export type UserRole = "USER" | "SUPPORT_AGENT" | "FINANCE_MANAGER" | "SUPER_ADMIN";
 
 export interface User {
   id: string; // UUID
@@ -27,11 +32,37 @@ export interface User {
 // ==========================================
 // 2. Wallets Collection
 // ==========================================
+// 🆕 تسک ۷ چک‌لیست کارفرما (تفکیک کیف پول سازمانی + شارژ خودکار + غیرفعال‌سازی سازمان):
+// از این پس ستون orgBalance دیگر «کیف پول واقعی سازمانی» محسوب نمی‌شود و همیشه ۰ باقی
+// می‌ماند (به‌جای حذف کامل ستون از دیتابیس که ریسک migration دارد، فقط دیگر خوانده/نوشته
+// نمی‌شود). موجودی واقعی و مشترک کیف پول سازمانی از این پس فقط و فقط در جدول جدید
+// `organizations` (فیلد walletBalance) نگهداری می‌شود — نگاه کنید به تایپ Organization
+// پایین همین فایل. کیف پول شخصی (normalBalance) هر کاربر بدون تغییر باقی مانده است.
 export interface Wallet {
   id: string;
   userId: string; // Reference to User.id
-  normalBalance: number; // In Toman (Non-withdrawable)
-  orgBalance: number; // In Toman (Non-withdrawable)
+  normalBalance: number; // In Toman (Non-withdrawable) — کیف پول شخصی کاربر
+  /** @deprecated از تسک ۷ به بعد استفاده نمی‌شود؛ همیشه ۰ است. موجودی سازمانی واقعی را از Organization.walletBalance بخوانید. */
+  orgBalance: number;
+  updatedAt: Date | string;
+}
+
+// ==========================================
+// 2.5. Organizations Collection (تسک ۷ چک‌لیست کارفرما)
+// ==========================================
+// هر سازمان دقیقاً یک ردیف دارد که با ستون User.organizationName / organizational_numbers.organizationName
+// مطابقت داده می‌شود (بر اساس نام، نه شناسه — چون این دو جدول از قبل نام سازمان را به‌صورت متن
+// ذخیره می‌کردند و برای جلوگیری از یک migration پرریسک، همان الگو حفظ شد).
+export interface Organization {
+  id: string;
+  name: string; // باید دقیقاً با User.organizationName یکی باشد
+  isActive: boolean; // اگر false شود، هیچ پرسنلی نمی‌تواند از کیف پول سازمانی برای رزرو استفاده کند
+  walletBalance: number; // موجودی مشترک کیف پول سازمانی (تومان، غیرقابل برداشت) — توسط تمام پرسنل قابل استفاده
+  autoChargeEnabled: boolean; // آیا شارژ خودکار دوره‌ای برای این سازمان فعال است
+  autoChargeAmount: number; // مبلغی که هر بار به‌صورت خودکار شارژ می‌شود
+  autoChargeIntervalDays: number; // فاصله‌ی زمانی بین دو شارژ خودکار (روز)
+  lastAutoChargeAt: Date | string | null; // آخرین باری که شارژ خودکار واقعاً اجرا شد
+  createdAt: Date | string;
   updatedAt: Date | string;
 }
 
@@ -43,7 +74,15 @@ export type GatewayStatus = "SUCCESS" | "PENDING" | "FAILED";
 
 export interface Transaction {
   id: string;
-  walletId: string; // Reference to Wallet.id
+  // 🆕 تسک ۷: از این پس walletId می‌تواند null باشد — فقط برای تراکنش‌های سطح-سازمان
+  // (شارژ دستی/خودکار مستقیم روی استخر مشترک سازمان، بدون تعلق به یک کاربر مشخص).
+  // برای تمام تراکنش‌های دیگر (شخصی یا پرداخت رزرو از کیف پول سازمانی توسط یک کاربر
+  // مشخص) walletId مثل قبل همیشه پر است.
+  walletId: string | null; // Reference to Wallet.id
+  // 🆕 تسک ۷: وقتی این تراکنش به کیف پول مشترک یک سازمان مربوط باشد (شارژ/کسر/برداشت
+  // بابت رزرو از کیف پول سازمانی)، شناسه‌ی همان سازمان اینجا هم ثبت می‌شود — چه در کنار
+  // walletId (پرداخت رزرو توسط یک کاربر مشخص) و چه به‌تنهایی (شارژ دستی/خودکار مستقیم سازمان).
+  organizationId?: string | null; // Reference to Organization.id
   amount: number; // In Toman
   type: TransactionType;
   walletType: UserType; // NORMAL or ORGANIZATIONAL
@@ -79,7 +118,9 @@ export interface Booking {
   checkOutDate: Date | string;
   basePersonCount: number;
   extraPersonCount: number;
-  nationalCode: string;
+  // 🆕 تسک ۲۱: از این پس فرم رزرو دیگر کد ملی نمی‌گیرد، پس رزروهای جدید همیشه این
+  // مقدار را NULL ثبت می‌کنند؛ فقط رزروهای قدیمی‌تر (پیش از این تسک) مقدار دارند.
+  nationalCode: string | null;
   totalPaidAmount: number;
   status: BookingStatus;
   isVisibleForUser: boolean;
@@ -175,7 +216,17 @@ export interface SavedProperty {
 // 9. Admin Audit Logs Collection (شفافیت اقدامات ادمین)
 // ==========================================
 // 🆕 BLOG_POST_CHANGE برای عملیات مدیریت بلاگ (فاز ۱۱، بخش ۴) اضافه شد.
-// اگر این فایل را جایگزین می‌کنید، حتماً migration مربوطه (بخش ۱۴ سند
+// 🆕 تسک ۲ چک‌لیست کارفرما (نمایش لاگ فعالیت پشتیبانی/مالی/مدیر ارشد): دو نوع
+// اکشن جدید TICKET_REPLY و TICKET_STATUS_CHANGE اضافه شد تا پاسخ‌دهی و
+// بستن تیکت توسط ادمین/پشتیبان هم مثل بقیه‌ی اقدامات حساس، در همین جدول
+// admin_audit_logs ثبت و در صفحه‌ی «لاگ فعالیت‌ها» (`/admin/activity-log`) قابل مشاهده باشد.
+// 🆕 تسک ۷ چک‌لیست کارفرما: نوع اکشن جدید ORGANIZATION_CHANGE اضافه شد — برای
+// فعال/غیرفعال‌سازی سازمان، شارژ/کسر دستی کیف پول مشترک سازمان و تغییر تنظیمات
+// شارژ خودکار (src/app/api/admin/corporate/organizations/**).
+// 🆕 تسک ۱۸ چک‌لیست کارفرما (امکان تغییر بنر اصلی صفحه اول): نوع اکشن جدید
+// BANNER_CHANGE اضافه شد تا افزودن/ویرایش/حذف بنرهای صفحه اول هم مثل بقیه‌ی
+// اقدامات غیرمالی/محتوایی (بلاگ، سازمانی) در admin_audit_logs ثبت شود.
+// اگر این فایل را جایگزین می‌کنید، حتماً migration مربوطه (بند ۱۹ سند
 // DATABASE_SQL_LOG.md) را هم روی دیتابیس Supabase اجرا کنید.
 export type AdminActionType =
   | "ROLE_CHANGE"
@@ -187,6 +238,10 @@ export type AdminActionType =
   | "BLOG_POST_CHANGE"
   | "CORPORATE_LEAD_UPDATE"
   | "CORPORATE_NUMBER_CHANGE"
+  | "TICKET_REPLY"
+  | "TICKET_STATUS_CHANGE"
+  | "ORGANIZATION_CHANGE"
+  | "BANNER_CHANGE"
   | "OTHER";
 
 export interface AdminAuditLog {
@@ -275,5 +330,54 @@ export interface OtpCode {
   isUsed: boolean;
   ipAddress: string | null;
   attemptCount: number;
+  createdAt: Date | string;
+}
+
+// ==========================================
+// 13. Homepage Banners Collection (بنر اصلی صفحه اول — تسک ۱۸ چک‌لیست کارفرما)
+// ==========================================
+// 🆕 اضافه شد تا مدیر ارشد (و پشتیبان‌های دارای دسترسی تب "banners") بتوانند
+// بدون نیاز به دخالت دولوپر، عکس، متن و کمپین/جشنواره‌ی بنر بالای صفحه اول را
+// از پنل مدیریت تغییر دهند. title/subtitle/badgeText/linkUrl همگی اختیاری‌اند:
+// اگر title یا subtitle خالی بماند، فرانت‌اند از متن پیش‌فرض سراسری
+// (src/constants/home.ts → HERO_CONTENT) استفاده می‌کند.
+export interface HomepageBanner {
+  id: string;
+  imageUrl: string;
+  title: string | null;
+  subtitle: string | null;
+  badgeText: string | null; // برچسب کمپین/جشنواره، مثلاً «جشنواره تابستانه»
+  linkUrl: string | null; // در صورت وجود، کلیک روی بنر کاربر را به این آدرس می‌برد
+  displayOrder: number;
+  isActive: boolean;
+  createdAt: Date | string;
+  updatedAt: Date | string;
+}
+
+// ==========================================
+// 14. Notifications Collection (اعلان‌های درون‌برنامه‌ای — تسک ۱۵ چک‌لیست کارفرما)
+// ==========================================
+// 🆕 قبل از این تسک، زنگوله‌ی بالای هدر (src/components/layout/header/Header.tsx)
+// کاملاً تزئینی بود: نه onClick داشت و نه به هیچ داده‌ای وصل بود؛ نقطه‌ی نارنجی رویش
+// هم همیشه هاردکد نمایش داده می‌شد. از این پس هر رویداد مهم چرخه‌ی کاربر (تایید
+// پرداخت رزرو، لغو رزرو توسط خود کاربر یا میزبان، پاسخ پشتیبانی به تیکت و شارژ
+// موفق کیف پول) یک ردیف در همین جدول ثبت می‌کند؛ تنها نقطه‌ی ساخت آن هم
+// src/lib/notifications/notificationService.ts است — دقیقاً هم‌الگو با تجمیع
+// ارسال پیامک در src/lib/sms/smsService.ts.
+export type NotificationType =
+  | "BOOKING_CONFIRMED"
+  | "BOOKING_CANCELLED"
+  | "TICKET_REPLIED"
+  | "WALLET_CHARGED"
+  | "GENERAL";
+
+export interface UserNotification {
+  id: string;
+  userId: string;
+  type: NotificationType;
+  title: string;
+  message: string;
+  linkUrl: string | null; // در صورت وجود، کلیک روی اعلان کاربر را به این آدرس می‌برد
+  isRead: boolean;
   createdAt: Date | string;
 }

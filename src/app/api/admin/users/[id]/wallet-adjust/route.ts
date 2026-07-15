@@ -4,10 +4,19 @@
 // شرایط خاص پشتیبانی (مثل جبران خسارت یا اصلاح خطا) است و ثبت لاگ اجباری در admin_audit_logs دارد.
 // دسترسی: فقط SUPER_ADMIN (عملیات مالی حساس طبق بخش ۵ سند فاز ۹).
 //
-// 🔧 اصلاحیه: متن لاگ ادمین قبلاً برای هر دو حالت شارژ (DEPOSIT) و کسر (WITHDRAWAL) از
-// عبارت «از کیف پول ...» استفاده می‌کرد که برای حالت شارژ از نظر معنایی درست نبود
-// (باید «به کیف پول» می‌بود). این تغییر فقط متن لاگ داخلی را اصلاح می‌کند و هیچ
-// تاثیری روی محاسبه‌ی موجودی یا رفتار سیستم ندارد.
+// 🆕 تسک ۷ چک‌لیست کارفرما (تفکیک کیف پول سازمانی + شارژ خودکار + غیرفعال‌سازی سازمان):
+// از این پس این صفحه دیگر به‌طور مستقیم روی wallets.orgBalance (که دیگر استفاده نمی‌شود)
+// کار نمی‌کند. وقتی walletType=ORGANIZATIONAL انتخاب شود:
+//   ۱. کاربر هدف باید واقعاً سازمانی باشد و سازمانش در جدول `organizations` وجود داشته باشد.
+//   ۲. شارژ/کسر روی موجودی مشترک همان سازمان (organizations.walletBalance) اعمال می‌شود —
+//      یعنی این عملیات روی کل پرسنل آن سازمان اثر می‌گذارد، نه فقط کاربر انتخاب‌شده.
+//   ۳. برای شارژ/کسر مستقل از یک کاربر خاص (بدون نیاز به رفتن به صفحه‌ی یک کاربر مشخص)،
+//      از تب جدید «کیف پول‌های سازمانی» در src/app/admin/corporate/page.tsx (که به
+//      src/app/api/admin/corporate/organizations/[id]/charge/route.ts وصل است) استفاده کنید.
+// شارژ/کسر کیف پول شخصی (NORMAL) هیچ تغییری نکرده است.
+//
+// 🔧 اصلاحیه قبلی (بدون تغییر): متن لاگ ادمین برای هر دو حالت شارژ (DEPOSIT) و کسر
+// (WITHDRAWAL) اصلاح‌شده باقی مانده است.
 
 import { NextRequest, NextResponse } from "next/server";
 import { supabaseAdmin } from "@/lib/supabase-admin";
@@ -47,7 +56,7 @@ export async function POST(request: NextRequest, { params }: RouteContext) {
 
     const { data: targetUser, error: userError } = await supabaseAdmin
       .from("users")
-      .select("id, firstName, lastName, phoneNumber")
+      .select("id, firstName, lastName, phoneNumber, userType, organizationName")
       .eq("id", targetUserId)
       .maybeSingle();
 
@@ -55,6 +64,113 @@ export async function POST(request: NextRequest, { params }: RouteContext) {
       return NextResponse.json({ success: false, error: "کاربر مورد نظر یافت نشد" }, { status: 404 });
     }
 
+    // ==================================================================
+    // مسیر ۱: شارژ/کسر کیف پول مشترک سازمانی (اثرگذار روی کل پرسنل سازمان)
+    // ==================================================================
+    if (walletType === "ORGANIZATIONAL") {
+      if (targetUser.userType !== "ORGANIZATIONAL" || !targetUser.organizationName) {
+        return NextResponse.json(
+          { success: false, error: "این کاربر سازمانی نیست؛ کیف پول سازمانی برای او تعریف نشده است" },
+          { status: 400 }
+        );
+      }
+
+      const { data: organization, error: orgError } = await supabaseAdmin
+        .from("organizations")
+        .select("*")
+        .eq("name", targetUser.organizationName)
+        .maybeSingle();
+
+      if (orgError || !organization) {
+        return NextResponse.json(
+          { success: false, error: "سازمان این کاربر هنوز در سیستم کیف پول ثبت نشده است" },
+          { status: 404 }
+        );
+      }
+
+      const currentOrgBalance = Number(organization.walletBalance);
+      const delta = direction === "DEPOSIT" ? numericAmount : -numericAmount;
+      const newOrgBalance = currentOrgBalance + delta;
+
+      if (newOrgBalance < 0) {
+        return NextResponse.json(
+          { success: false, error: "موجودی کیف پول سازمان برای این مقدار کسر کافی نیست" },
+          { status: 400 }
+        );
+      }
+
+      const { data: updatedOrganization, error: orgUpdateError } = await supabaseAdmin
+        .from("organizations")
+        .update({ walletBalance: newOrgBalance, updatedAt: new Date().toISOString() })
+        .eq("id", organization.id)
+        .eq("walletBalance", currentOrgBalance)
+        .select()
+        .maybeSingle();
+
+      if (orgUpdateError || !updatedOrganization) {
+        return NextResponse.json(
+          { success: false, error: "موجودی سازمان هم‌زمان تغییر کرده است. لطفاً دوباره تلاش کنید." },
+          { status: 409 }
+        );
+      }
+
+      // کیف پول شخصی کاربر انتخاب‌شده فقط برای پیوست‌کردن walletId به تراکنش لازم است
+      // (تا این تراکنش هم در صفحه‌ی «تاریخچه کیف پول» کاربر و هم گزارش‌های سازمانی دیده شود)
+      let { data: personalWallet } = await supabaseAdmin.from("wallets").select("*").eq("userId", targetUserId).maybeSingle();
+      if (!personalWallet) {
+        const { data: newWallet } = await supabaseAdmin.from("wallets").insert([{ userId: targetUserId }]).select().single();
+        if (newWallet) personalWallet = newWallet;
+      }
+
+      const { error: txError } = await supabaseAdmin.from("transactions").insert([
+        {
+          walletId: personalWallet ? personalWallet.id : null,
+          organizationId: organization.id,
+          amount: numericAmount,
+          type: direction,
+          walletType: "ORGANIZATIONAL",
+          gatewayStatus: "SUCCESS",
+          trackingCode: `ADMIN-MANUAL-${admin.userId.slice(0, 8)}`,
+        },
+      ]);
+
+      if (txError) {
+        console.error("Admin Org Wallet Transaction Insert Error:", txError);
+        // Rollback موجودی سازمان
+        await supabaseAdmin
+          .from("organizations")
+          .update({ walletBalance: currentOrgBalance, updatedAt: new Date().toISOString() })
+          .eq("id", organization.id);
+        return NextResponse.json({ success: false, error: "خطا در ثبت تراکنش" }, { status: 500 });
+      }
+
+      await logAdminAction({
+        adminId: admin.userId,
+        actionType: "WALLET_ADJUST",
+        targetUserId,
+        description: `${direction === "DEPOSIT" ? "شارژ دستی" : "کسر دستی"} ${numericAmount.toLocaleString(
+          "fa-IR"
+        )} تومان ${direction === "DEPOSIT" ? "به" : "از"} کیف پول مشترک سازمانِ «${targetUser.organizationName}» (از طریق پروفایل کاربر ${
+          targetUser.firstName
+        } ${targetUser.lastName} — ${targetUser.phoneNumber}) — دلیل: ${reason.trim()}`,
+        previousValue: String(currentOrgBalance),
+        newValue: String(newOrgBalance),
+      });
+
+      // پاسخ در همان قالب قبلی (wallet) برگردانده می‌شود تا فرانت‌اند فعلی بدون تغییر کار کند؛
+      // فقط orgBalance آن از این پس همیشه ۰ خواهد بود (چون دیگر معنا ندارد) و موجودی واقعی
+      // سازمانی را باید از پاسخ organization بخوانید.
+      return NextResponse.json({
+        success: true,
+        wallet: personalWallet,
+        organization: updatedOrganization,
+        message: "موجودی کیف پول مشترک سازمان با موفقیت به‌روزرسانی شد",
+      });
+    }
+
+    // ==================================================================
+    // مسیر ۲: شارژ/کسر کیف پول شخصی (NORMAL) — بدون تغییر نسبت به قبل
+    // ==================================================================
     let { data: wallet, error: walletError } = await supabaseAdmin
       .from("wallets")
       .select("*")
@@ -76,8 +192,7 @@ export async function POST(request: NextRequest, { params }: RouteContext) {
       wallet = newWallet;
     }
 
-    const balanceField = walletType === "NORMAL" ? "normalBalance" : "orgBalance";
-    const currentBalance = Number(wallet[balanceField]);
+    const currentBalance = Number(wallet.normalBalance);
     const delta = direction === "DEPOSIT" ? numericAmount : -numericAmount;
     const newBalance = currentBalance + delta;
 
@@ -90,7 +205,7 @@ export async function POST(request: NextRequest, { params }: RouteContext) {
 
     const { data: updatedWallet, error: updateError } = await supabaseAdmin
       .from("wallets")
-      .update({ [balanceField]: newBalance, updatedAt: new Date().toISOString() })
+      .update({ normalBalance: newBalance, updatedAt: new Date().toISOString() })
       .eq("id", wallet.id)
       .select()
       .single();
@@ -105,7 +220,7 @@ export async function POST(request: NextRequest, { params }: RouteContext) {
         walletId: wallet.id,
         amount: numericAmount,
         type: direction,
-        walletType,
+        walletType: "NORMAL",
         gatewayStatus: "SUCCESS",
         trackingCode: `ADMIN-MANUAL-${admin.userId.slice(0, 8)}`,
       },
@@ -120,12 +235,11 @@ export async function POST(request: NextRequest, { params }: RouteContext) {
       adminId: admin.userId,
       actionType: "WALLET_ADJUST",
       targetUserId,
-      // 🔧 اصلاح‌شده: «به» برای شارژ (DEPOSIT) و «از» برای کسر (WITHDRAWAL)
       description: `${direction === "DEPOSIT" ? "شارژ دستی" : "کسر دستی"} ${numericAmount.toLocaleString(
         "fa-IR"
-      )} تومان ${direction === "DEPOSIT" ? "به" : "از"} کیف پول ${
-        walletType === "NORMAL" ? "عادی" : "سازمانی"
-      } کاربر ${targetUser.firstName} ${targetUser.lastName} (${targetUser.phoneNumber}) — دلیل: ${reason.trim()}`,
+      )} تومان ${direction === "DEPOSIT" ? "به" : "از"} کیف پول عادی کاربر ${targetUser.firstName} ${
+        targetUser.lastName
+      } (${targetUser.phoneNumber}) — دلیل: ${reason.trim()}`,
       previousValue: String(currentBalance),
       newValue: String(newBalance),
     });

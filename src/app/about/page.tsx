@@ -1,4 +1,6 @@
 // مسیر: src/app/about/page.tsx
+// 🆕 تسک ۱۶: شماره تلفن بالکن در بخش «راه‌های ارتباط با ما» اکنون قابل کلیک است
+// (لینک tel:) — دقیقاً همان اصلاحی که در فوتر سایت هم انجام شد.
 
 import { Building2, ShieldCheck, HeartHandshake, MapPin, Phone, Mail, Sparkles } from "lucide-react";
 import { COMPANY_INFO } from "@/constants/company";
@@ -86,14 +88,19 @@ export default function AboutPage() {
               </span>
             </div>
 
-            <div className="flex items-center gap-4">
+            {/* 🆕 تسک ۱۶: شماره تلفن اکنون یک لینک tel: است تا با کلیک/لمس، مستقیم تماس گرفته شود */}
+            <a
+              href={`tel:${COMPANY_INFO.phone}`}
+              className="flex items-center gap-4 group"
+              aria-label={`تماس با بالکن: ${COMPANY_INFO.phone}`}
+            >
               <div className="p-3 bg-balkun-orange/10 rounded-2xl shrink-0">
                 <Phone className="w-5 h-5 text-balkun-orange" />
               </div>
-              <span dir="ltr" className="font-black text-balkun-navy tracking-widest text-lg">
+              <span dir="ltr" className="font-black text-balkun-navy tracking-widest text-lg group-hover:text-balkun-orange transition-colors">
                 {COMPANY_INFO.phone}
               </span>
-            </div>
+            </a>
 
             <div className="flex items-center gap-4">
               <div className="p-3 bg-balkun-yellow/10 rounded-2xl shrink-0">

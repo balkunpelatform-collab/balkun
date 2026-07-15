@@ -2,7 +2,7 @@
 //
 // این صفحه به‌صورت Server Component مستقیماً از searchService استفاده می‌کند
 // (نه از طریق fetch به روت API) تا یک رفت‌و‌برگشت شبکه اضافه حذف شود و
-// رندر اول صفحه کاملاً سمت سرور (SSR) باشد — هم برای سرعت، هم برای سئو.
+// رندر اول صفحه کاملاً سمت سرور (SSR) باشد — هم برای سئو، هم برای سرعت.
 //
 // روت /api/otaghak/search همچنان برای استفاده‌های آینده سمت کلاینت
 // (مثلاً فیلتر کردن بدون رفرش کامل صفحه) باقی می‌ماند.
@@ -10,9 +10,21 @@
 // 🆕 فاز ۱۱ بخش ۲ (رفع باگ): پارامتر category از URL خوانده و به searchRooms
 // پاس داده می‌شود (قبلاً این پارامتر اصلاً خوانده نمی‌شد، با اینکه دکمه‌ی
 // «مشاهده همه» در صفحه‌ی اصلی به /search?category=... لینک می‌داد).
+//
+// 🆕 تسک ۱۲ چک‌لیست کارفرما (نمایش جستجوی بالای صفحات دسته‌بندی اقامتگاه):
+// این صفحه همان صفحه‌ای است که با انتخاب هر دسته‌بندی (کلبه، اقامتگاه اختصاصی،
+// ویلا-سوئیت و ...) از CategoryBar باز می‌شود (نگاه کنید به
+// src/components/home/categories/CategoryBar.tsx: هر دسته به آدرس
+// /search?category=... لینک می‌دهد). طبق درخواست، همان باکس جستجوی صفحه‌ی اول
+// (FloatingSearchBox) حالا بالای همین صفحه هم نمایش داده می‌شود — با
+// variant="inline" (بدون حاشیه‌ی منفی مخصوص روی-بنر بودن) و از قبل پر شده با
+// همان فیلترهایی که کاربر همین الان با آن‌ها به این صفحه رسیده (مقصد، تاریخ،
+// تعداد نفرات)، تا کاربر بتواند بدون بازگشت به صفحه‌ی اول، جست‌وجوی خود را از
+// همین‌جا هم اصلاح/تکرار کند.
 
 import { searchRooms } from "@/lib/otaghak/services/searchService";
 import { CATEGORIES } from "@/constants/categories";
+import FloatingSearchBox from "@/components/home/search/FloatingSearchBox";
 import SearchSummaryHeader from "@/components/search/SearchSummaryHeader";
 import SearchResultsList from "@/components/search/SearchResultsList";
 
@@ -47,16 +59,30 @@ export default async function SearchPage({ searchParams }: SearchPageProps) {
   });
 
   return (
-    <div className="container mx-auto px-4 py-8 max-w-6xl">
-      <SearchSummaryHeader
-        city={city}
-        checkin={checkin}
-        checkout={checkout}
-        person={person}
-        totalCount={result.totalCount}
-        categoryLabel={categoryLabel}
+    <div className="flex flex-col w-full">
+      {/* 🆕 تسک ۱۲: باکس جستجوی صفحه‌ی اول، حالا بالای همین صفحه (نتایج/دسته‌بندی) هم
+          نمایش داده می‌شود؛ از قبل با همان فیلترهای فعلی کاربر پر شده و در صورت
+          جست‌وجوی دوباره، اگر یک دسته‌بندی خاص فعال بود، همان دسته‌بندی حفظ می‌شود. */}
+      <FloatingSearchBox
+        variant="inline"
+        initialCity={city}
+        initialCheckin={checkin}
+        initialCheckout={checkout}
+        initialPerson={person || 2}
+        category={category}
       />
-      <SearchResultsList items={result.items} />
+
+      <div className="container mx-auto px-4 pb-8 max-w-6xl">
+        <SearchSummaryHeader
+          city={city}
+          checkin={checkin}
+          checkout={checkout}
+          person={person}
+          totalCount={result.totalCount}
+          categoryLabel={categoryLabel}
+        />
+        <SearchResultsList items={result.items} />
+      </div>
     </div>
   );
 }

@@ -1,6 +1,10 @@
 // مسیر: src/app/blog/page.tsx
 // صفحه‌ی عمومی لیست بلاگ — Server Component؛ مستقیماً از blogService پست‌های
 // منتشرشده را می‌خواند، دقیقاً هم‌الگو با src/app/search/page.tsx.
+//
+// 🆕 تسک ۵ چک‌لیست کارفرما: این صفحه هم مثل src/app/blog/[slug]/page.tsx صراحتاً
+// «force-dynamic» شد تا لیست پست‌ها هرگز در Build کش نشود و همیشه همان لحظه از
+// دیتابیس خوانده شود — همان تغییری که مشکل نمایش/۴۰۴ در صفحه‌ی تک‌پست را هم رفع کرد.
 
 import Link from "next/link";
 import Image from "next/image";
@@ -8,6 +12,9 @@ import { Calendar, ArrowLeft } from "lucide-react";
 import { getPublishedPosts } from "@/lib/blog/blogService";
 import { BLOG_CATEGORIES, getBlogCategoryLabel } from "@/constants/blogCategories";
 import { COMPANY_INFO } from "@/constants/company";
+
+export const dynamic = "force-dynamic";
+export const revalidate = 0;
 
 export const metadata = {
   title: `بلاگ ${COMPANY_INFO.name}`,

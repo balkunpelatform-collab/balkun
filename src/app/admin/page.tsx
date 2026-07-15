@@ -1,4 +1,9 @@
 "use client";
+// 🆕 تسک ۳ (دسترسی داشبورد برای مدیر مالی): این صفحه از قبل فقط SUPPORT_AGENT را
+// ریدایرکت می‌کرد؛ نقش FINANCE_MANAGER هرگز اینجا مسدود نبود، فقط چون خودِ روت
+// GET /api/admin/dashboard قبلاً فقط SUPER_ADMIN را می‌پذیرفت، درخواست او با ۴۰۳
+// مواجه می‌شد. با اضافه‌شدن FINANCE_MANAGER به آن روت (route.ts)، این صفحه بدون
+// هیچ تغییری برای مدیر مالی هم به‌درستی کار می‌کند.
 
 import { useEffect, useState } from "react";
 import { useRouter } from "next/navigation";

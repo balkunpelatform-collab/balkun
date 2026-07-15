@@ -10,7 +10,7 @@ interface AdminUser {
   firstName: string;
   lastName: string;
   userType: "NORMAL" | "ORGANIZATIONAL";
-  role: "USER" | "SUPPORT_AGENT" | "SUPER_ADMIN";
+  role: "USER" | "SUPPORT_AGENT" | "FINANCE_MANAGER" | "SUPER_ADMIN";
   isActive: boolean;
   joinedAt: string;
 }
@@ -48,6 +48,7 @@ export default function AdminUsersPage() {
 
   const getRoleBadge = (role: string) => {
     if (role === "SUPER_ADMIN") return <span className="bg-purple-100 text-purple-700 px-2 py-1 rounded-md text-[10px] font-bold">مدیر ارشد</span>;
+    if (role === "FINANCE_MANAGER") return <span className="bg-balkun-yellow/10 text-amber-700 px-2 py-1 rounded-md text-[10px] font-bold">مدیر مالی</span>;
     if (role === "SUPPORT_AGENT") return <span className="bg-balkun-cyan/10 text-balkun-cyan px-2 py-1 rounded-md text-[10px] font-bold">پشتیبان</span>;
     return <span className="bg-slate-100 text-slate-500 px-2 py-1 rounded-md text-[10px] font-bold">کاربر عادی</span>;
   };

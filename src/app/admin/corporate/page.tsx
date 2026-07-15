@@ -1,18 +1,27 @@
 // مسیر: src/app/admin/corporate/page.tsx
-// 🆕 تب کامل «سازمانی» پنل ادمین. سه بخش:
+// 🆕 تب کامل «سازمانی» پنل ادمین. چهار بخش:
 //   ۱) درخواست‌های سازمانی (لیدهای ورودی از فرم عمومی /corporate) — مشاهده، تغییر وضعیت پیگیری، ثبت یادداشت داخلی.
 //   ۲) کاربران سازمانی فعال — لیست کاربرانی که هم‌اکنون userType=ORGANIZATIONAL هستند (لینک مستقیم به صفحه مدیریت هرکدام برای کیف پول/نقش).
 //   ۳) لیست سفید شماره‌های سازمانی — همان جدولی که ثبت‌نام از روی آن، به‌صورت خودکار userType کاربر را سازمانی تشخیص می‌دهد.
-// قبل از این فایل، هیچ‌کدام از این سه بخش در پنل ادمین قابل مشاهده یا مدیریت نبودند.
+//      🆕 تسک ۶ چک‌لیست: علاوه بر افزودن تکی، حالا افزودن گروهی این شماره‌ها از طریق فایل CSV/Excel هم اضافه شد
+//      (پارس فایل در همین صفحه در مرورگر انجام می‌شود، سپس ردیف‌ها به‌صورت یک‌جا به
+//      /api/admin/corporate/numbers/bulk ارسال می‌شوند).
+//   ۴) 🆕 تسک ۷ چک‌لیست کارفرما (تفکیک کیف پول سازمانی + شارژ خودکار + غیرفعال‌سازی سازمان):
+//      کیف پول‌های سازمانی — مدیریت متمرکز استخر مشترک کیف پول هر سازمان: مشاهده موجودی،
+//      شارژ/کسر دستی، فعال/غیرفعال‌سازی سازمان (که بلافاصله جلوی استفاده‌ی پرسنل از کیف
+//      پول سازمانی را می‌گیرد)، و تنظیم/اجرای شارژ خودکار دوره‌ای.
+// قبل از این فایل، هیچ‌کدام از این چهار بخش در پنل ادمین قابل مشاهده یا مدیریت نبودند.
 
 "use client";
 
-import { useEffect, useState, useCallback } from "react";
+import { useEffect, useState, useCallback, useRef } from "react";
 import Link from "next/link";
 import { useAuthStore } from "@/store/authStore";
 import {
   Building2, Loader2, Search, Phone, Save, X, Trash2, Plus,
   AlertTriangle, ExternalLink, ClipboardList, Users2, ListChecks,
+  Upload, Download, FileSpreadsheet, CheckCircle2, XCircle,
+  Wallet, Power, PowerOff, Zap, Settings2, Users, RefreshCw,
 } from "lucide-react";
 
 // ---------- انواع داده ----------
@@ -48,6 +57,37 @@ interface OrgNumber {
   createdAt: string;
 }
 
+// 🆕 تسک ۶: ساختار هر ردیفِ پارس‌شده از فایل، قبل از ارسال به سرور
+interface ParsedRow {
+  row: number;
+  phoneNumber: string;
+  organizationName: string;
+  valid: boolean;
+  reason?: string;
+}
+
+// 🆕 تسک ۶: ساختار نتیجه‌ی هر ردیف پس از پردازش در سرور
+interface BulkRowResult {
+  row: number;
+  phoneNumber: string;
+  organizationName: string;
+  status: "inserted" | "duplicate" | "invalid";
+  reason?: string;
+}
+
+// 🆕 تسک ۷: ساختار یک سازمان (کیف پول مشترک)
+interface Organization {
+  id: string;
+  name: string;
+  isActive: boolean;
+  walletBalance: number;
+  autoChargeEnabled: boolean;
+  autoChargeAmount: number;
+  autoChargeIntervalDays: number;
+  lastAutoChargeAt: string | null;
+  memberCount: number;
+}
+
 const STATUS_LABELS: Record<OrgLeadStatus, string> = {
   UNREAD: "خوانده‌نشده",
   CONTACTED: "تماس گرفته شد",
@@ -64,7 +104,14 @@ const STATUS_STYLES: Record<OrgLeadStatus, string> = {
 
 const DELETE_CONFIRM_WORD = "حذف";
 
-type Section = "leads" | "orgUsers" | "numbers";
+// 🆕 تسک ۶: رجکس تایید شماره موبایل ایران، دقیقاً همان رجکسی که سمت سرور هم استفاده می‌شود
+const PHONE_REGEX = /^09[0-9]{9}$/;
+
+function formatToman(n: number): string {
+  return new Intl.NumberFormat("fa-IR").format(n);
+}
+
+type Section = "leads" | "orgUsers" | "numbers" | "wallets";
 
 export default function AdminCorporatePage() {
   const { user } = useAuthStore();
@@ -79,7 +126,7 @@ export default function AdminCorporatePage() {
           مرکز مدیریت سازمانی
         </h1>
         <p className="text-sm font-medium text-slate-500 mt-1">
-          تمام درخواست‌ها، کاربران و شماره‌های سازمانی بالکن، یکجا و متمرکز.
+          تمام درخواست‌ها، کاربران، شماره‌ها و کیف‌پول‌های سازمانی بالکن، یکجا و متمرکز.
         </p>
       </div>
 
@@ -88,11 +135,13 @@ export default function AdminCorporatePage() {
         <SectionTab active={section === "leads"} onClick={() => setSection("leads")} icon={ClipboardList} label="درخواست‌های سازمانی" />
         <SectionTab active={section === "orgUsers"} onClick={() => setSection("orgUsers")} icon={Users2} label="کاربران سازمانی فعال" />
         <SectionTab active={section === "numbers"} onClick={() => setSection("numbers")} icon={ListChecks} label="لیست سفید شماره‌ها" />
+        <SectionTab active={section === "wallets"} onClick={() => setSection("wallets")} icon={Wallet} label="کیف پول‌های سازمانی" />
       </div>
 
       {section === "leads" && <LeadsSection />}
       {section === "orgUsers" && <OrgUsersSection isSuperAdmin={isSuperAdmin} />}
       {section === "numbers" && <NumbersSection />}
+      {section === "wallets" && <WalletsSection isSuperAdmin={isSuperAdmin} />}
     </div>
   );
 }
@@ -147,15 +196,15 @@ function LeadsSection() {
       if (data.success) {
         setLeads(data.leads || []);
         setCounts(data.counts);
-        setTotal(data.pagination.total || 0);
+        setTotal(data.pagination?.total || 0);
       }
     } catch (error) {
-      console.error("Error fetching corporate leads:", error);
+      console.error("Error fetching leads:", error);
     } finally {
       setIsLoading(false);
     }
     // eslint-disable-next-line react-hooks/exhaustive-deps
-  }, [status, search, page]);
+  }, [page, status, search]);
 
   useEffect(() => { fetchLeads(); }, [fetchLeads]);
 
@@ -615,6 +664,9 @@ function NumbersSection() {
         </div>
       </div>
 
+      {/* 🆕 تسک ۶: افزودن گروهی شماره‌های سازمانی از طریق فایل CSV/Excel */}
+      <BulkImportPanel onImported={() => { setPage(1); fetchNumbers(); showMessage("لیست سفید سازمانی بروزرسانی شد", "success"); }} />
+
       <div className="bg-white p-4 border border-slate-100 rounded-2xl shadow-sm">
         <div className="relative w-full">
           <input
@@ -714,6 +766,727 @@ function NumbersSection() {
           </div>
         </div>
       )}
+    </div>
+  );
+}
+
+// ============================================================
+// 🆕 تسک ۶: پنل افزودن گروهی شماره‌های سازمانی از طریق فایل CSV/Excel
+// ============================================================
+// نحوه‌ی کار: فایل CSV باید دو ستون داشته باشد: phoneNumber و organizationName
+// (سطر اول می‌تواند هدر باشد یا نباشد، هر دو حالت تشخیص داده می‌شود).
+// فایل کاملاً در مرورگر پارس می‌شود (بدون نیاز به کتابخانه‌ی جدید)؛ سپس
+// پیش‌نمایش ردیف‌های معتبر/نامعتبر به ادمین نشان داده می‌شود و فقط با تایید
+// ادمین، ردیف‌های معتبر یک‌جا به سرور (/api/admin/corporate/numbers/bulk)
+// ارسال و در جدول organizational_numbers درج می‌شوند.
+function BulkImportPanel({ onImported }: { onImported: () => void }) {
+  const fileInputRef = useRef<HTMLInputElement>(null);
+  const [fileName, setFileName] = useState("");
+  const [parsedRows, setParsedRows] = useState<ParsedRow[]>([]);
+  const [parseError, setParseError] = useState("");
+  const [isSubmitting, setIsSubmitting] = useState(false);
+  const [resultSummary, setResultSummary] = useState<{ total: number; inserted: number; duplicate: number; invalid: number } | null>(null);
+  const [resultRows, setResultRows] = useState<BulkRowResult[]>([]);
+
+  const downloadTemplate = () => {
+    // BOM (\uFEFF) برای این‌که اکسل فارسی را درست (بدون کاراکترهای درهم) نمایش دهد
+    const csvContent = "\uFEFFphoneNumber,organizationName\n09123456789,شرکت نمونه بالکن\n";
+    const blob = new Blob([csvContent], { type: "text/csv;charset=utf-8;" });
+    const url = URL.createObjectURL(blob);
+    const a = document.createElement("a");
+    a.href = url;
+    a.download = "organizational-numbers-template.csv";
+    document.body.appendChild(a);
+    a.click();
+    document.body.removeChild(a);
+    URL.revokeObjectURL(url);
+  };
+
+  // یک خط CSV را با در نظر گرفتن مقادیر داخل گیومه (") به‌درستی جدا می‌کند
+  const splitCsvLine = (line: string): string[] => {
+    const result: string[] = [];
+    let current = "";
+    let insideQuotes = false;
+    for (let i = 0; i < line.length; i++) {
+      const char = line[i];
+      if (char === '"') {
+        insideQuotes = !insideQuotes;
+      } else if ((char === "," || char === ";") && !insideQuotes) {
+        result.push(current.trim());
+        current = "";
+      } else {
+        current += char;
+      }
+    }
+    result.push(current.trim());
+    return result;
+  };
+
+  const handleFileSelect = (file: File) => {
+    setParseError("");
+    setResultSummary(null);
+    setResultRows([]);
+    setFileName(file.name);
+
+    const reader = new FileReader();
+    reader.onload = (e) => {
+      const text = (e.target?.result as string) || "";
+      // پشتیبانی از هر دو حالت جداکننده خط (\n و \r\n)
+      const lines = text.split(/\r\n|\n/).map((l) => l.trim()).filter((l) => l.length > 0);
+
+      if (lines.length === 0) {
+        setParseError("فایل خالی است یا قابل خواندن نیست");
+        return;
+      }
+
+      // تشخیص خودکار سطر هدر: اگر ستون اول سطر اول یک شماره موبایل معتبر نیست، همان سطر هدر است
+      const firstCells = splitCsvLine(lines[0]);
+      const firstLooksLikePhone = PHONE_REGEX.test((firstCells[0] || "").trim());
+      const dataLines = firstLooksLikePhone ? lines : lines.slice(1);
+
+      if (dataLines.length === 0) {
+        setParseError("هیچ ردیف داده‌ای بعد از سطر هدر یافت نشد");
+        return;
+      }
+
+      const rows: ParsedRow[] = dataLines.map((line, idx) => {
+        const cells = splitCsvLine(line);
+        const phoneNumber = (cells[0] || "").trim();
+        const organizationName = (cells[1] || "").trim();
+        let valid = true;
+        let reason = "";
+        if (!PHONE_REGEX.test(phoneNumber)) { valid = false; reason = "شماره موبایل معتبر نیست"; }
+        else if (!organizationName || organizationName.length < 2) { valid = false; reason = "نام سازمان الزامی است"; }
+        return { row: idx + 1, phoneNumber, organizationName, valid, reason };
+      });
+
+      setParsedRows(rows);
+    };
+    reader.onerror = () => setParseError("خطا در خواندن فایل");
+    reader.readAsText(file, "UTF-8");
+  };
+
+  const validRows = parsedRows.filter((r) => r.valid);
+  const invalidRows = parsedRows.filter((r) => !r.valid);
+
+  const handleSubmit = async () => {
+    if (validRows.length === 0) return;
+    setIsSubmitting(true);
+    setResultSummary(null);
+    setResultRows([]);
+    try {
+      const res = await fetch("/api/admin/corporate/numbers/bulk", {
+        method: "POST",
+        headers: { "Content-Type": "application/json" },
+        body: JSON.stringify({
+          rows: validRows.map((r) => ({ phoneNumber: r.phoneNumber, organizationName: r.organizationName })),
+        }),
+      });
+      const data = await res.json();
+      if (data.success) {
+        setResultSummary(data.summary);
+        setResultRows(data.results || []);
+        setParsedRows([]);
+        setFileName("");
+        if (fileInputRef.current) fileInputRef.current.value = "";
+        onImported();
+      } else {
+        setParseError(data.error || "خطا در ارسال فایل به سرور");
+      }
+    } catch {
+      setParseError("خطا در ارتباط با سرور");
+    } finally {
+      setIsSubmitting(false);
+    }
+  };
+
+  const handleCancel = () => {
+    setParsedRows([]);
+    setFileName("");
+    setParseError("");
+    if (fileInputRef.current) fileInputRef.current.value = "";
+  };
+
+  return (
+    <div className="bg-white p-6 border border-slate-100 rounded-2xl shadow-sm flex flex-col gap-4">
+      <div className="flex items-start justify-between flex-wrap gap-3">
+        <div>
+          <h3 className="font-black text-balkun-navy mb-1 flex items-center gap-2">
+            <FileSpreadsheet className="w-4 h-4 text-balkun-orange" />
+            افزودن گروهی از طریق فایل (CSV / اکسل)
+          </h3>
+          <p className="text-xs font-medium text-slate-500">
+            فایل باید دو ستون داشته باشد: شماره موبایل و نام سازمان. اگر با اکسل کار می‌کنید، فایل را با فرمت CSV ذخیره کنید (Save As → CSV).
+          </p>
+        </div>
+        <button
+          onClick={downloadTemplate}
+          className="inline-flex items-center gap-1.5 bg-slate-50 hover:bg-slate-100 text-slate-600 px-4 py-2 rounded-xl font-bold text-xs shrink-0"
+        >
+          <Download className="w-3.5 h-3.5" />
+          دانلود فایل نمونه CSV
+        </button>
+      </div>
+
+      <div className="flex items-center gap-3 flex-wrap">
+        <input
+          ref={fileInputRef}
+          type="file"
+          accept=".csv,text/csv"
+          onChange={(e) => { const f = e.target.files?.[0]; if (f) handleFileSelect(f); }}
+          className="hidden"
+          id="bulk-org-numbers-file"
+        />
+        <label
+          htmlFor="bulk-org-numbers-file"
+          className="inline-flex items-center gap-2 bg-balkun-navy text-white px-5 py-2.5 rounded-xl font-bold text-sm hover:bg-balkun-navy-dark cursor-pointer"
+        >
+          <Upload className="w-4 h-4" />
+          انتخاب فایل CSV
+        </label>
+        {fileName && <span className="text-xs font-bold text-slate-500">{fileName}</span>}
+      </div>
+
+      {parseError && (
+        <div className="bg-red-50 text-red-600 text-xs font-bold p-3 rounded-xl flex items-center gap-2">
+          <XCircle className="w-4 h-4 shrink-0" /> {parseError}
+        </div>
+      )}
+
+      {parsedRows.length > 0 && (
+        <div className="flex flex-col gap-3">
+          <div className="flex items-center gap-4 flex-wrap text-xs font-bold">
+            <span className="text-slate-600">مجموع ردیف‌های خوانده‌شده: {parsedRows.length}</span>
+            <span className="text-green-600 flex items-center gap-1"><CheckCircle2 className="w-3.5 h-3.5" /> معتبر: {validRows.length}</span>
+            {invalidRows.length > 0 && (
+              <span className="text-red-500 flex items-center gap-1"><XCircle className="w-3.5 h-3.5" /> نامعتبر: {invalidRows.length}</span>
+            )}
+          </div>
+
+          <div className="border border-slate-100 rounded-xl overflow-hidden max-h-64 overflow-y-auto">
+            <table className="w-full text-xs text-right">
+              <thead className="bg-slate-50 text-slate-500 font-bold sticky top-0">
+                <tr>
+                  <th className="px-4 py-2">ردیف</th>
+                  <th className="px-4 py-2">شماره موبایل</th>
+                  <th className="px-4 py-2">نام سازمان</th>
+                  <th className="px-4 py-2">وضعیت</th>
+                </tr>
+              </thead>
+              <tbody className="divide-y divide-slate-100">
+                {parsedRows.map((r) => (
+                  <tr key={r.row} className={r.valid ? "" : "bg-red-50/50"}>
+                    <td className="px-4 py-2 font-bold text-slate-500">{r.row}</td>
+                    <td className="px-4 py-2 font-bold" dir="ltr">{r.phoneNumber || "-"}</td>
+                    <td className="px-4 py-2 font-bold text-balkun-orange">{r.organizationName || "-"}</td>
+                    <td className="px-4 py-2">
+                      {r.valid ? (
+                        <span className="text-green-600 font-bold">معتبر</span>
+                      ) : (
+                        <span className="text-red-500 font-bold">{r.reason}</span>
+                      )}
+                    </td>
+                  </tr>
+                ))}
+              </tbody>
+            </table>
+          </div>
+
+          <div className="flex gap-3">
+            <button
+              onClick={handleCancel}
+              disabled={isSubmitting}
+              className="flex-1 py-2.5 rounded-xl border border-slate-200 text-slate-600 font-bold text-sm hover:bg-slate-50 disabled:opacity-50"
+            >
+              انصراف
+            </button>
+            <button
+              onClick={handleSubmit}
+              disabled={isSubmitting || validRows.length === 0}
+              className="flex-1 py-2.5 rounded-xl bg-balkun-navy text-white font-bold text-sm hover:bg-balkun-navy-dark disabled:opacity-50 flex items-center justify-center gap-2"
+            >
+              {isSubmitting ? <Loader2 className="w-4 h-4 animate-spin" /> : `افزودن ${validRows.length} شماره معتبر`}
+            </button>
+          </div>
+        </div>
+      )}
+
+      {resultSummary && (
+        <div className="bg-green-50 border border-green-100 rounded-xl p-4 flex flex-col gap-2">
+          <p className="text-sm font-black text-green-700">
+            نتیجه‌ی آپلود: از مجموع {resultSummary.total} ردیف، {resultSummary.inserted} شماره با موفقیت افزوده شد.
+          </p>
+          {(resultSummary.duplicate > 0 || resultSummary.invalid > 0) && (
+            <p className="text-xs font-bold text-slate-600">
+              {resultSummary.duplicate > 0 && <>«{resultSummary.duplicate}» ردیف تکراری بود (قبلاً در لیست بود). </>}
+              {resultSummary.invalid > 0 && <>«{resultSummary.invalid}» ردیف نامعتبر رد شد.</>}
+            </p>
+          )}
+          {resultRows.some((r) => r.status !== "inserted") && (
+            <details className="text-xs font-medium text-slate-500">
+              <summary className="cursor-pointer font-bold text-slate-600">مشاهده جزئیات ردیف‌های رد‌شده</summary>
+              <ul className="mt-2 flex flex-col gap-1">
+                {resultRows.filter((r) => r.status !== "inserted").map((r) => (
+                  <li key={r.row} dir="ltr" className="text-right">
+                    ردیف {r.row} — {r.phoneNumber}: {r.reason}
+                  </li>
+                ))}
+              </ul>
+            </details>
+          )}
+        </div>
+      )}
+    </div>
+  );
+}
+
+// ============================================================
+// 🆕 تسک ۷ چک‌لیست کارفرما: بخش ۴ — کیف پول‌های سازمانی
+// ============================================================
+// این بخش برای هر سازمان: موجودی مشترک، تعداد پرسنل، وضعیت فعال/غیرفعال و تنظیمات
+// شارژ خودکار را نشان می‌دهد. عملیات نوشتنی (شارژ/کسر دستی، فعال/غیرفعال‌سازی، ذخیره‌ی
+// تنظیمات شارژ خودکار) فقط برای مدیر ارشد (SUPER_ADMIN) فعال است؛ مدیر مالی (اگر به این
+// صفحه دسترسی داشته باشد) فقط می‌تواند مشاهده کند.
+function WalletsSection({ isSuperAdmin }: { isSuperAdmin: boolean }) {
+  const [organizations, setOrganizations] = useState<Organization[]>([]);
+  const [isLoading, setIsLoading] = useState(true);
+  const [search, setSearch] = useState("");
+  const [message, setMessage] = useState({ text: "", type: "" });
+  const [isRunningAutoCharge, setIsRunningAutoCharge] = useState(false);
+
+  const [chargeTarget, setChargeTarget] = useState<Organization | null>(null);
+  const [settingsTarget, setSettingsTarget] = useState<Organization | null>(null);
+  const [toggleTarget, setToggleTarget] = useState<Organization | null>(null);
+  const [isToggling, setIsToggling] = useState(false);
+
+  const fetchOrganizations = useCallback(async () => {
+    setIsLoading(true);
+    try {
+      const query = new URLSearchParams({ ...(search && { search }) });
+      const res = await fetch(`/api/admin/corporate/organizations?${query.toString()}`);
+      const data = await res.json();
+      if (data.success) {
+        setOrganizations(data.organizations || []);
+      }
+    } catch (error) {
+      console.error("Error fetching organizations:", error);
+    } finally {
+      setIsLoading(false);
+    }
+    // eslint-disable-next-line react-hooks/exhaustive-deps
+  }, [search]);
+
+  useEffect(() => { fetchOrganizations(); }, [fetchOrganizations]);
+
+  const showMessage = (text: string, type: "success" | "error") => {
+    setMessage({ text, type });
+    setTimeout(() => setMessage({ text: "", type: "" }), 4000);
+  };
+
+  const handleToggleActive = async () => {
+    if (!toggleTarget) return;
+    setIsToggling(true);
+    try {
+      const res = await fetch(`/api/admin/corporate/organizations/${toggleTarget.id}`, {
+        method: "PATCH",
+        headers: { "Content-Type": "application/json" },
+        body: JSON.stringify({ isActive: !toggleTarget.isActive }),
+      });
+      const data = await res.json();
+      if (data.success) {
+        showMessage(!toggleTarget.isActive ? "سازمان فعال شد" : "سازمان غیرفعال شد؛ پرسنل دیگر نمی‌توانند از کیف پول سازمانی استفاده کنند", "success");
+        setToggleTarget(null);
+        fetchOrganizations();
+      } else {
+        showMessage(data.error || "خطا در تغییر وضعیت سازمان", "error");
+      }
+    } catch {
+      showMessage("خطا در ارتباط با سرور", "error");
+    } finally {
+      setIsToggling(false);
+    }
+  };
+
+  const handleRunAutoCharge = async () => {
+    setIsRunningAutoCharge(true);
+    try {
+      const res = await fetch("/api/admin/corporate/organizations/auto-charge", { method: "POST" });
+      const data = await res.json();
+      if (data.success) {
+        showMessage(`اجرای شارژ خودکار انجام شد: ${data.chargedCount} سازمان شارژ شد`, "success");
+        fetchOrganizations();
+      } else {
+        showMessage(data.error || "خطا در اجرای شارژ خودکار", "error");
+      }
+    } catch {
+      showMessage("خطا در ارتباط با سرور", "error");
+    } finally {
+      setIsRunningAutoCharge(false);
+    }
+  };
+
+  if (!isSuperAdmin && organizations.length === 0 && !isLoading) {
+    // مدیر مالی هم می‌تواند این تب را ببیند (فقط-خواندنی)؛ این پیام صرفاً برای حالت خالی نیست، رد نمی‌شود
+  }
+
+  return (
+    <div className="flex flex-col gap-6">
+      <Toast message={message} />
+
+      <div className="bg-white p-4 border border-slate-100 rounded-2xl shadow-sm flex flex-col md:flex-row md:items-center gap-4 justify-between">
+        <div className="relative w-full md:max-w-sm">
+          <input
+            type="text"
+            placeholder="جستجو بر اساس نام سازمان..."
+            value={search}
+            onChange={(e) => setSearch(e.target.value)}
+            className="w-full bg-slate-50 border border-slate-200 rounded-xl py-2.5 pr-10 pl-4 text-sm font-medium focus:outline-none focus:border-balkun-cyan"
+          />
+          <Search className="w-4 h-4 text-slate-400 absolute right-3 top-3.5" />
+        </div>
+        {isSuperAdmin && (
+          <button
+            onClick={handleRunAutoCharge}
+            disabled={isRunningAutoCharge}
+            className="inline-flex items-center justify-center gap-2 bg-balkun-cyan/10 hover:bg-balkun-cyan text-balkun-cyan hover:text-white px-5 py-2.5 rounded-xl font-bold text-sm transition-colors disabled:opacity-50 shrink-0"
+          >
+            {isRunningAutoCharge ? <Loader2 className="w-4 h-4 animate-spin" /> : <Zap className="w-4 h-4" />}
+            اجرای شارژ خودکار الان
+          </button>
+        )}
+      </div>
+
+      {!isSuperAdmin && (
+        <div className="p-4 rounded-2xl bg-blue-50 text-blue-700 font-bold text-xs flex items-center gap-3">
+          <AlertTriangle className="w-4 h-4 shrink-0" />
+          شما فقط می‌توانید کیف پول‌های سازمانی را مشاهده کنید؛ شارژ/کسر دستی، فعال/غیرفعال‌سازی و تنظیم شارژ خودکار فقط برای مدیر ارشد (SUPER_ADMIN) فعال است.
+        </div>
+      )}
+
+      <div className="bg-white border border-slate-100 rounded-2xl shadow-sm overflow-hidden">
+        <div className="overflow-x-auto">
+          <table className="w-full text-sm text-right">
+            <thead className="bg-slate-50/50 text-slate-500 font-bold border-b border-slate-100">
+              <tr>
+                <th className="px-6 py-4">سازمان</th>
+                <th className="px-6 py-4">تعداد پرسنل</th>
+                <th className="px-6 py-4">موجودی مشترک</th>
+                <th className="px-6 py-4">شارژ خودکار</th>
+                <th className="px-6 py-4">وضعیت</th>
+                <th className="px-6 py-4">عملیات</th>
+              </tr>
+            </thead>
+            <tbody className="divide-y divide-slate-100">
+              {isLoading && organizations.length === 0 ? (
+                <tr><td colSpan={6} className="px-6 py-12 text-center"><Loader2 className="w-6 h-6 text-balkun-cyan animate-spin mx-auto mb-2" /><span className="text-slate-500 font-bold">در حال دریافت سازمان‌ها...</span></td></tr>
+              ) : organizations.length === 0 ? (
+                <tr><td colSpan={6} className="px-6 py-12 text-center text-slate-500 font-bold">هیچ سازمانی ثبت نشده است</td></tr>
+              ) : (
+                organizations.map((org) => (
+                  <tr key={org.id} className="hover:bg-slate-50/50 transition-colors">
+                    <td className="px-6 py-4 font-bold text-slate-800">{org.name}</td>
+                    <td className="px-6 py-4 text-slate-600 font-medium flex items-center gap-1.5">
+                      <Users className="w-3.5 h-3.5 text-slate-400" /> {org.memberCount} نفر
+                    </td>
+                    <td className="px-6 py-4 font-black text-balkun-navy" dir="ltr">
+                      {formatToman(org.walletBalance)} <span className="text-[10px] font-normal text-slate-400">تومان</span>
+                    </td>
+                    <td className="px-6 py-4">
+                      {org.autoChargeEnabled ? (
+                        <span className="inline-flex items-center gap-1 text-[11px] font-bold px-2 py-1 rounded-md bg-balkun-cyan/10 text-balkun-cyan">
+                          <Zap className="w-3 h-3" /> هر {org.autoChargeIntervalDays} روز، {formatToman(org.autoChargeAmount)} تومان
+                        </span>
+                      ) : (
+                        <span className="text-[11px] font-bold text-slate-400">غیرفعال</span>
+                      )}
+                    </td>
+                    <td className="px-6 py-4">
+                      <span className={`px-2.5 py-1 rounded-md text-[11px] font-bold ${org.isActive ? "bg-green-50 text-green-600" : "bg-red-50 text-red-500"}`}>
+                        {org.isActive ? "فعال" : "غیرفعال"}
+                      </span>
+                    </td>
+                    <td className="px-6 py-4">
+                      {isSuperAdmin ? (
+                        <div className="flex items-center gap-2 flex-wrap">
+                          <button
+                            onClick={() => setChargeTarget(org)}
+                            className="inline-flex items-center gap-1.5 bg-balkun-cyan/10 hover:bg-balkun-cyan text-balkun-cyan hover:text-white px-3 py-1.5 rounded-lg transition-colors font-bold text-xs"
+                          >
+                            <Wallet className="w-3.5 h-3.5" /> شارژ/کسر
+                          </button>
+                          <button
+                            onClick={() => setSettingsTarget(org)}
+                            className="inline-flex items-center gap-1.5 bg-slate-100 hover:bg-slate-200 text-slate-600 px-3 py-1.5 rounded-lg transition-colors font-bold text-xs"
+                          >
+                            <Settings2 className="w-3.5 h-3.5" /> شارژ خودکار
+                          </button>
+                          <button
+                            onClick={() => setToggleTarget(org)}
+                            className={`inline-flex items-center gap-1.5 px-3 py-1.5 rounded-lg transition-colors font-bold text-xs ${
+                              org.isActive ? "bg-red-50 hover:bg-red-500 text-red-500 hover:text-white" : "bg-green-50 hover:bg-green-600 text-green-600 hover:text-white"
+                            }`}
+                          >
+                            {org.isActive ? <PowerOff className="w-3.5 h-3.5" /> : <Power className="w-3.5 h-3.5" />}
+                            {org.isActive ? "غیرفعال‌سازی" : "فعال‌سازی"}
+                          </button>
+                        </div>
+                      ) : (
+                        <span className="text-xs text-slate-400 font-bold">فقط مشاهده</span>
+                      )}
+                    </td>
+                  </tr>
+                ))
+              )}
+            </tbody>
+          </table>
+        </div>
+      </div>
+
+      {chargeTarget && (
+        <OrgChargeModal
+          organization={chargeTarget}
+          onClose={() => setChargeTarget(null)}
+          onSuccess={() => { setChargeTarget(null); fetchOrganizations(); showMessage("موجودی سازمان بروزرسانی شد", "success"); }}
+        />
+      )}
+
+      {settingsTarget && (
+        <OrgAutoChargeModal
+          organization={settingsTarget}
+          onClose={() => setSettingsTarget(null)}
+          onSuccess={() => { setSettingsTarget(null); fetchOrganizations(); showMessage("تنظیمات شارژ خودکار ذخیره شد", "success"); }}
+        />
+      )}
+
+      {toggleTarget && (
+        <div className="fixed inset-0 z-[70] flex items-center justify-center p-4 bg-black/50" onClick={() => !isToggling && setToggleTarget(null)}>
+          <div className="bg-white rounded-2xl shadow-2xl w-full max-w-md p-6 flex flex-col gap-4" onClick={(e) => e.stopPropagation()}>
+            <div className="flex items-center justify-between">
+              <h3 className={`font-black text-lg flex items-center gap-2 ${toggleTarget.isActive ? "text-red-600" : "text-green-600"}`}>
+                {toggleTarget.isActive ? <PowerOff className="w-5 h-5" /> : <Power className="w-5 h-5" />}
+                {toggleTarget.isActive ? "غیرفعال‌سازی سازمان" : "فعال‌سازی سازمان"}
+              </h3>
+              <button onClick={() => !isToggling && setToggleTarget(null)} className="p-1.5 text-slate-400 hover:text-slate-600"><X className="w-5 h-5" /></button>
+            </div>
+            <div className={`text-sm font-bold p-3 rounded-xl ${toggleTarget.isActive ? "bg-red-50 text-red-700" : "bg-green-50 text-green-700"}`}>
+              {toggleTarget.isActive
+                ? `با غیرفعال‌سازی «${toggleTarget.name}»، تمام ${toggleTarget.memberCount} پرسنل این سازمان فوراً دیگر نمی‌توانند از کیف پول سازمانی برای پرداخت رزرو استفاده کنند. موجودی سازمان حفظ می‌شود و با فعال‌سازی مجدد بلافاصله در دسترس خواهد بود.`
+                : `با فعال‌سازی «${toggleTarget.name}»، پرسنل این سازمان دوباره می‌توانند از کیف پول مشترک سازمانی (موجودی فعلی: ${formatToman(toggleTarget.walletBalance)} تومان) برای پرداخت رزرو استفاده کنند.`}
+            </div>
+            <div className="flex gap-3 mt-2">
+              <button onClick={() => setToggleTarget(null)} disabled={isToggling} className="flex-1 py-2.5 rounded-xl border border-slate-200 text-slate-600 font-bold text-sm hover:bg-slate-50 disabled:opacity-50">انصراف</button>
+              <button
+                onClick={handleToggleActive}
+                disabled={isToggling}
+                className={`flex-1 py-2.5 rounded-xl text-white font-bold text-sm disabled:opacity-50 flex items-center justify-center gap-2 ${
+                  toggleTarget.isActive ? "bg-red-600 hover:bg-red-700" : "bg-green-600 hover:bg-green-700"
+                }`}
+              >
+                {isToggling ? <Loader2 className="w-4 h-4 animate-spin" /> : toggleTarget.isActive ? "غیرفعال‌سازی" : "فعال‌سازی"}
+              </button>
+            </div>
+          </div>
+        </div>
+      )}
+    </div>
+  );
+}
+
+// مودال شارژ/کسر دستی کیف پول مشترک یک سازمان
+function OrgChargeModal({ organization, onClose, onSuccess }: { organization: Organization; onClose: () => void; onSuccess: () => void }) {
+  const [direction, setDirection] = useState<"DEPOSIT" | "WITHDRAWAL">("DEPOSIT");
+  const [amount, setAmount] = useState("");
+  const [reason, setReason] = useState("");
+  const [isSaving, setIsSaving] = useState(false);
+  const [error, setError] = useState("");
+
+  const handleSubmit = async () => {
+    setError("");
+    if (!amount || Number(amount) <= 0) { setError("مبلغ باید عددی مثبت باشد"); return; }
+    if (!reason.trim() || reason.trim().length < 5) { setError("درج دلیل الزامی است (حداقل ۵ کاراکتر)"); return; }
+
+    setIsSaving(true);
+    try {
+      const res = await fetch(`/api/admin/corporate/organizations/${organization.id}/charge`, {
+        method: "POST",
+        headers: { "Content-Type": "application/json" },
+        body: JSON.stringify({ direction, amount: Number(amount), reason: reason.trim() }),
+      });
+      const data = await res.json();
+      if (data.success) onSuccess();
+      else setError(data.error || "خطا در ثبت تراکنش");
+    } catch {
+      setError("خطا در ارتباط با سرور");
+    } finally {
+      setIsSaving(false);
+    }
+  };
+
+  return (
+    <div className="fixed inset-0 z-[70] flex items-center justify-center p-4 bg-black/50" onClick={() => !isSaving && onClose()}>
+      <div className="bg-white rounded-2xl shadow-2xl w-full max-w-md p-6 flex flex-col gap-4" onClick={(e) => e.stopPropagation()}>
+        <div className="flex items-center justify-between">
+          <h3 className="font-black text-lg text-balkun-navy flex items-center gap-2">
+            <Wallet className="w-5 h-5 text-balkun-cyan" /> شارژ/کسر کیف پول سازمان «{organization.name}»
+          </h3>
+          <button onClick={() => !isSaving && onClose()} className="p-1.5 text-slate-400 hover:text-slate-600"><X className="w-5 h-5" /></button>
+        </div>
+
+        <p className="text-xs font-bold text-slate-500">
+          موجودی فعلی: <span className="text-balkun-navy">{formatToman(organization.walletBalance)} تومان</span> — این تغییر روی کیف پول مشترک، یعنی برای تمام {organization.memberCount} پرسنل این سازمان اعمال می‌شود.
+        </p>
+
+        <div className="grid grid-cols-2 gap-2">
+          <button
+            onClick={() => setDirection("DEPOSIT")}
+            className={`py-2.5 rounded-xl font-bold text-sm border transition-colors ${direction === "DEPOSIT" ? "bg-green-600 border-green-600 text-white" : "border-slate-200 text-slate-600 hover:bg-slate-50"}`}
+          >
+            شارژ (افزایش)
+          </button>
+          <button
+            onClick={() => setDirection("WITHDRAWAL")}
+            className={`py-2.5 rounded-xl font-bold text-sm border transition-colors ${direction === "WITHDRAWAL" ? "bg-red-600 border-red-600 text-white" : "border-slate-200 text-slate-600 hover:bg-slate-50"}`}
+          >
+            کسر (کاهش)
+          </button>
+        </div>
+
+        <div className="flex flex-col gap-1.5">
+          <label className="text-xs font-bold text-slate-500">مبلغ (تومان)</label>
+          <input
+            type="text"
+            inputMode="numeric"
+            dir="ltr"
+            value={amount}
+            onChange={(e) => setAmount(e.target.value.replace(/\D/g, ""))}
+            placeholder="مثال: 5000000"
+            className="w-full bg-slate-50 border border-slate-200 rounded-xl px-4 py-2.5 text-left font-black text-balkun-navy outline-none focus:border-balkun-cyan"
+          />
+        </div>
+
+        <div className="flex flex-col gap-1.5">
+          <label className="text-xs font-bold text-slate-500">دلیل این تغییر دستی (الزامی)</label>
+          <textarea
+            value={reason}
+            onChange={(e) => setReason(e.target.value)}
+            rows={2}
+            placeholder="مثلاً: شارژ ماهانه طبق قرارداد، یا اصلاح خطای شارژ قبلی..."
+            className="w-full bg-slate-50 border border-slate-200 rounded-xl px-4 py-2.5 text-sm font-medium focus:outline-none focus:border-balkun-cyan resize-none"
+          />
+        </div>
+
+        {error && <div className="bg-red-50 text-red-600 text-xs font-bold p-3 rounded-xl">{error}</div>}
+
+        <div className="flex gap-3 mt-2">
+          <button onClick={onClose} disabled={isSaving} className="flex-1 py-2.5 rounded-xl border border-slate-200 text-slate-600 font-bold text-sm hover:bg-slate-50 disabled:opacity-50">انصراف</button>
+          <button onClick={handleSubmit} disabled={isSaving} className="flex-1 py-2.5 rounded-xl bg-balkun-navy text-white font-bold text-sm hover:bg-balkun-navy-dark disabled:opacity-50 flex items-center justify-center gap-2">
+            {isSaving ? <Loader2 className="w-4 h-4 animate-spin" /> : <><Save className="w-4 h-4" /> ثبت تغییر</>}
+          </button>
+        </div>
+      </div>
+    </div>
+  );
+}
+
+// مودال تنظیمات شارژ خودکار یک سازمان
+function OrgAutoChargeModal({ organization, onClose, onSuccess }: { organization: Organization; onClose: () => void; onSuccess: () => void }) {
+  const [enabled, setEnabled] = useState(organization.autoChargeEnabled);
+  const [amount, setAmount] = useState(String(organization.autoChargeAmount || ""));
+  const [intervalDays, setIntervalDays] = useState(String(organization.autoChargeIntervalDays || 30));
+  const [isSaving, setIsSaving] = useState(false);
+  const [error, setError] = useState("");
+
+  const handleSubmit = async () => {
+    setError("");
+    if (enabled && (!amount || Number(amount) <= 0)) { setError("برای فعال‌سازی شارژ خودکار، مبلغ باید عددی مثبت باشد"); return; }
+    if (!intervalDays || Number(intervalDays) < 1) { setError("بازه‌ی زمانی باید حداقل ۱ روز باشد"); return; }
+
+    setIsSaving(true);
+    try {
+      const res = await fetch(`/api/admin/corporate/organizations/${organization.id}`, {
+        method: "PATCH",
+        headers: { "Content-Type": "application/json" },
+        body: JSON.stringify({
+          autoChargeEnabled: enabled,
+          autoChargeAmount: Number(amount) || 0,
+          autoChargeIntervalDays: Number(intervalDays),
+        }),
+      });
+      const data = await res.json();
+      if (data.success) onSuccess();
+      else setError(data.error || "خطا در ذخیره تنظیمات");
+    } catch {
+      setError("خطا در ارتباط با سرور");
+    } finally {
+      setIsSaving(false);
+    }
+  };
+
+  return (
+    <div className="fixed inset-0 z-[70] flex items-center justify-center p-4 bg-black/50" onClick={() => !isSaving && onClose()}>
+      <div className="bg-white rounded-2xl shadow-2xl w-full max-w-md p-6 flex flex-col gap-4" onClick={(e) => e.stopPropagation()}>
+        <div className="flex items-center justify-between">
+          <h3 className="font-black text-lg text-balkun-navy flex items-center gap-2">
+            <Zap className="w-5 h-5 text-balkun-orange" /> شارژ خودکار سازمان «{organization.name}»
+          </h3>
+          <button onClick={() => !isSaving && onClose()} className="p-1.5 text-slate-400 hover:text-slate-600"><X className="w-5 h-5" /></button>
+        </div>
+
+        <button
+          onClick={() => setEnabled((v) => !v)}
+          className={`flex items-center justify-between p-3 rounded-xl border font-bold text-sm transition-colors ${
+            enabled ? "border-balkun-cyan bg-balkun-cyan/5 text-balkun-cyan" : "border-slate-200 text-slate-500"
+          }`}
+        >
+          شارژ خودکار دوره‌ای برای این سازمان
+          <span className={`w-10 h-6 rounded-full relative transition-colors ${enabled ? "bg-balkun-cyan" : "bg-slate-300"}`}>
+            <span className={`absolute top-0.5 w-5 h-5 rounded-full bg-white transition-all ${enabled ? "right-0.5" : "right-4"}`} />
+          </span>
+        </button>
+
+        <div className="flex flex-col gap-1.5">
+          <label className="text-xs font-bold text-slate-500">مبلغ هر بار شارژ (تومان)</label>
+          <input
+            type="text"
+            inputMode="numeric"
+            dir="ltr"
+            value={amount}
+            onChange={(e) => setAmount(e.target.value.replace(/\D/g, ""))}
+            placeholder="مثال: 10000000"
+            disabled={!enabled}
+            className="w-full bg-slate-50 border border-slate-200 rounded-xl px-4 py-2.5 text-left font-black text-balkun-navy outline-none focus:border-balkun-cyan disabled:opacity-50"
+          />
+        </div>
+
+        <div className="flex flex-col gap-1.5">
+          <label className="text-xs font-bold text-slate-500">فاصله‌ی زمانی بین دو شارژ (روز)</label>
+          <input
+            type="text"
+            inputMode="numeric"
+            dir="ltr"
+            value={intervalDays}
+            onChange={(e) => setIntervalDays(e.target.value.replace(/\D/g, ""))}
+            placeholder="مثال: 30"
+            className="w-full bg-slate-50 border border-slate-200 rounded-xl px-4 py-2.5 text-left font-black text-balkun-navy outline-none focus:border-balkun-cyan"
+          />
+        </div>
+
+        {organization.autoChargeEnabled && (
+          <p className="text-[11px] font-bold text-slate-400 flex items-center gap-1.5">
+            <RefreshCw className="w-3 h-3" />
+            برای اجرای واقعی شارژ خودکار (طبق این بازه)، از دکمه‌ی «اجرای شارژ خودکار الان» در بالای همین صفحه استفاده کنید، یا آن را روی یک Cron روزانه زمان‌بندی کنید.
+          </p>
+        )}
+
+        {error && <div className="bg-red-50 text-red-600 text-xs font-bold p-3 rounded-xl">{error}</div>}
+
+        <div className="flex gap-3 mt-2">
+          <button onClick={onClose} disabled={isSaving} className="flex-1 py-2.5 rounded-xl border border-slate-200 text-slate-600 font-bold text-sm hover:bg-slate-50 disabled:opacity-50">انصراف</button>
+          <button onClick={handleSubmit} disabled={isSaving} className="flex-1 py-2.5 rounded-xl bg-balkun-navy text-white font-bold text-sm hover:bg-balkun-navy-dark disabled:opacity-50 flex items-center justify-center gap-2">
+            {isSaving ? <Loader2 className="w-4 h-4 animate-spin" /> : <><Save className="w-4 h-4" /> ذخیره تنظیمات</>}
+          </button>
+        </div>
+      </div>
     </div>
   );
 }

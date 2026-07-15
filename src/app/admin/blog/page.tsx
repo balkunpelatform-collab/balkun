@@ -1,14 +1,21 @@
 // مسیر: src/app/admin/blog/page.tsx
 // لیست پست‌های بلاگ در پنل مدیریت.
-// 🆕 فاز ۱۱ / بخش ۴: برخلاف صفحه‌ی اقامتگاه‌های اختصاصی، مدیریت بلاگ یک عملیات
+// فاز ۱۱ / بخش ۴: برخلاف صفحه‌ی اقامتگاه‌های اختصاصی، مدیریت بلاگ یک عملیات
 // مالی/حساس نیست؛ بنابراین دکمه‌های افزودن/ویرایش/حذف برای هر ادمینی که اصلاً
 // اجازه‌ی دیدن این صفحه را دارد نمایش داده می‌شود (نه فقط SUPER_ADMIN).
+//
+// 🆕 تسک ۵ چک‌لیست کارفرما (خطای 404 در بلاگ):
+// قبلاً دکمه‌ی «پیش‌نمایش» فقط برای پست‌های «منتشر شده» نمایش داده می‌شد و برای
+// پیش‌نویس‌ها کاملاً پنهان بود — بدون هیچ توضیحی. این سکوت باعث می‌شد وقتی کسی
+// آدرس یک پیش‌نویس را حدس می‌زد یا جایی کپی می‌کرد و باز می‌کرد، با خطای ۴۰۴ روبه‌رو
+// شود و تصور کند بلاگ خراب است. حالا برای پیش‌نویس‌ها هم آیکون دیده می‌شود، اما
+// غیرفعال و با راهنمای (tooltip) روشن: «برای پیش‌نمایش عمومی، ابتدا پست را منتشر کنید».
 
 "use client";
 
 import { useEffect, useState } from "react";
 import Link from "next/link";
-import { Search, Loader2, Newspaper, Plus, Edit, Trash2, Eye } from "lucide-react";
+import { Search, Loader2, Newspaper, Plus, Edit, Trash2, Eye, EyeOff } from "lucide-react";
 import { BLOG_CATEGORIES } from "@/constants/blogCategories";
 
 interface AdminBlogListItem {
@@ -127,10 +134,23 @@ export default function AdminBlogPage() {
                       </span>
                     </td>
                     <td className="px-6 py-4 flex gap-2">
-                      {post.status === 'PUBLISHED' && (
-                        <a href={`/blog/${post.slug}`} target="_blank" rel="noopener noreferrer" className="p-2 bg-slate-100 text-slate-600 rounded-lg hover:text-balkun-cyan">
+                      {post.status === 'PUBLISHED' ? (
+                        <a
+                          href={`/blog/${post.slug}`}
+                          target="_blank"
+                          rel="noopener noreferrer"
+                          title="مشاهده پست در سایت"
+                          className="p-2 bg-slate-100 text-slate-600 rounded-lg hover:text-balkun-cyan"
+                        >
                           <Eye className="w-4 h-4" />
                         </a>
+                      ) : (
+                        <span
+                          title="این پست پیش‌نویس است و در سایت نمایش داده نمی‌شود (۴۰۴ می‌دهد). برای مشاهده، ابتدا آن را منتشر کنید."
+                          className="p-2 bg-slate-50 text-slate-300 rounded-lg cursor-not-allowed"
+                        >
+                          <EyeOff className="w-4 h-4" />
+                        </span>
                       )}
                       <Link href={`/admin/blog/${post.id}`} className="p-2 bg-slate-100 text-slate-600 rounded-lg hover:text-balkun-cyan">
                         <Edit className="w-4 h-4" />

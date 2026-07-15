@@ -1,6 +1,15 @@
+// مسیر: src/app/api/payment/verify/route.ts
+//
+// 🆕 تسک ۱۵ چک‌لیست کارفرما (نمایش زنگوله‌ی هدر واقعی): بعد از تایید موفق پرداخت،
+// علاوه بر پیامک، یک اعلان درون‌برنامه‌ای هم برای کاربر ثبت می‌شود — چه برای تایید
+// رزرو (بخش الف) و چه برای شارژ موفق کیف پول شخصی (بخش ب). هر دو داخل try/catch
+// جداگانه و غیرحیاتی هستند، پس هرگز جریان اصلی پرداخت را مختل نمی‌کنند.
+
 import { NextRequest, NextResponse } from "next/server";
 import { supabaseAdmin } from "@/lib/supabase-admin";
 import { sendBookingConfirmedSms, sendVoucherIssuedSms } from "@/lib/sms/smsService";
+import { createNotification } from "@/lib/notifications/notificationService";
+import { formatPrice } from "@/utils/priceCalculator";
 
 export async function GET(req: NextRequest) {
   const url = new URL(req.url);
@@ -48,6 +57,17 @@ export async function GET(req: NextRequest) {
                    await sendBookingConfirmedSms(guestUser.phoneNumber, guestUser.firstName, confirmedBooking.roomName, trackingCode);
                    await sendVoucherIssuedSms(guestUser.phoneNumber, guestUser.firstName, tx.bookingId);
                 }
+
+                // 🆕 تسک ۱۵ چک‌لیست کارفرما — ثبت اعلان درون‌برنامه‌ای تایید رزرو (زنگوله‌ی هدر).
+                // دقیقاً هم‌الگو با پیامک بالا: در همین try/catch غیرحیاتی قرار گرفته تا خطای
+                // احتمالی آن هرگز جریان موفق پرداخت را مختل نکند.
+                await createNotification({
+                   userId: confirmedBooking.userId,
+                   type: "BOOKING_CONFIRMED",
+                   title: "رزرو شما تایید شد",
+                   message: `پرداخت رزرو «${confirmedBooking.roomName}» با موفقیت انجام شد و ووچر اقامت شما آماده است.`,
+                   linkUrl: `/voucher/${tx.bookingId}`,
+                });
              }
           } catch (smsError) {
              console.error("Booking Confirmation SMS Error (non-blocking):", smsError);
@@ -55,7 +75,7 @@ export async function GET(req: NextRequest) {
        } else {
           // ب: شارژ کیف پول بوده است
           // رفع خطای TypeScript با جداسازی صریح لاجیک کیف پول عادی و سازمانی
-          const { data: wallet } = await supabaseAdmin.from("wallets").select("normalBalance, orgBalance").eq("id", tx.walletId).single();
+          const { data: wallet } = await supabaseAdmin.from("wallets").select("userId, normalBalance, orgBalance").eq("id", tx.walletId).single();
           
           if (wallet) {
               if (tx.walletType === "NORMAL") {
@@ -64,6 +84,21 @@ export async function GET(req: NextRequest) {
                       normalBalance: newBalance, 
                       updatedAt: new Date().toISOString() 
                   }).eq("id", tx.walletId);
+
+                  // 🆕 تسک ۱۵ چک‌لیست کارفرما — اعلان شارژ موفق کیف پول شخصی (زنگوله‌ی هدر).
+                  // فقط برای شارژ کیف پول شخصی (NORMAL) می‌فرستیم؛ شارژ کیف پول مشترک سازمانی
+                  // متعلق به یک کاربر مشخص نیست، پس اعلان شخصی برایش معنا ندارد.
+                  try {
+                      await createNotification({
+                          userId: wallet.userId,
+                          type: "WALLET_CHARGED",
+                          title: "کیف پول شما شارژ شد",
+                          message: `مبلغ ${formatPrice(Number(tx.amount))} تومان با موفقیت به کیف پول شما اضافه شد.`,
+                          linkUrl: "/profile?tab=wallet",
+                      });
+                  } catch (notifyError) {
+                      console.error("Wallet Charge Notification Error (non-blocking):", notifyError);
+                  }
               } else {
                   const newBalance = Number(wallet.orgBalance) + Number(tx.amount);
                   await supabaseAdmin.from("wallets").update({ 

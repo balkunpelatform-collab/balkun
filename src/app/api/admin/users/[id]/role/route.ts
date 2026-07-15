@@ -1,13 +1,16 @@
 // مسیر: src/app/api/admin/users/[id]/role/route.ts
-// PATCH: تغییر نقش یک کاربر (ارتقا به SUPPORT_AGENT یا SUPER_ADMIN، یا بازگرداندن به USER).
+// PATCH: تغییر نقش یک کاربر (ارتقا به SUPPORT_AGENT، FINANCE_MANAGER یا SUPER_ADMIN، یا بازگرداندن به USER).
 // فقط SUPER_ADMIN مجاز است. هر تغییر به‌صورت اجباری در admin_audit_logs ثبت می‌شود.
+//
+// 🆕 تسک ۱ (تاریخچه کیف پول برای مالی و مدیر ارشد): نقش FINANCE_MANAGER به VALID_ROLES
+// اضافه شد تا مدیر ارشد بتواند از همین پنل (صفحه‌ی جزئیات کاربر) این نقش را به هر کاربری تخصیص دهد.
 
 import { NextResponse } from "next/server";
 import { supabaseAdmin } from "@/lib/supabase-admin";
 import { requireAdminRole, logAdminAction } from "@/lib/auth/adminAuth";
 import type { UserRole } from "@/types/database";
 
-const VALID_ROLES: UserRole[] = ["USER", "SUPPORT_AGENT", "SUPER_ADMIN"];
+const VALID_ROLES: UserRole[] = ["USER", "SUPPORT_AGENT", "FINANCE_MANAGER", "SUPER_ADMIN"];
 
 export async function PATCH(request: Request, { params }: { params: Promise<{ id: string }> }) {
   const admin = await requireAdminRole(request, ["SUPER_ADMIN"]);

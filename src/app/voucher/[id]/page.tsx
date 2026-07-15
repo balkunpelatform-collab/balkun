@@ -6,6 +6,10 @@
 // می‌دهد، و ۲) همین‌جا هم چک می‌شود که این رزرو واقعاً متعلق به همان کاربر لاگین‌شده باشد؛
 // در غیر این صورت صفحه‌ی «یافت نشد» نمایش داده می‌شود (نه خطای دسترسی، تا اطلاعاتی درباره‌ی
 // وجود/عدم‌وجود رزرو به کاربر دیگر لو نرود).
+//
+// 🆕 تسک ۲۱: از این پس رزروهای جدید دیگر کد ملی ندارند (این فیلد از فرم رزرو حذف شد)،
+// پس نمایش «کد ملی ثبت‌شده» فقط وقتی رزرو این مقدار را داشته باشد نمایش داده می‌شود
+// (رزروهای قدیمی‌تر که قبلاً کد ملی ثبت کرده‌اند، همچنان همان‌طور نمایش داده می‌شوند).
 
 import { notFound } from "next/navigation";
 import { headers } from "next/headers";
@@ -104,10 +108,13 @@ export default async function VoucherPage({ params }: { params: Promise<{ id: st
                 <span className="text-xs font-bold text-slate-400 flex items-center gap-1"><Users className="w-3 h-3"/> نفرات</span>
                 <span className="text-sm font-black text-slate-800">{booking.basePersonCount + booking.extraPersonCount} مسافر</span>
               </div>
-              <div className="flex flex-col gap-1">
-                <span className="text-xs font-bold text-slate-400 flex items-center gap-1">کد ملی ثبت‌شده</span>
-                <span className="text-sm font-black text-slate-800 tracking-wider" dir="ltr">{booking.nationalCode}</span>
-              </div>
+              {/* 🆕 تسک ۲۱: فقط اگر این رزرو (از قبل، پیش از حذف فیلد) کد ملی داشته باشد نمایش داده می‌شود */}
+              {booking.nationalCode && (
+                <div className="flex flex-col gap-1">
+                  <span className="text-xs font-bold text-slate-400 flex items-center gap-1">کد ملی ثبت‌شده</span>
+                  <span className="text-sm font-black text-slate-800 tracking-wider" dir="ltr">{booking.nationalCode}</span>
+                </div>
+              )}
             </div>
 
             <div className="w-full h-px bg-slate-100 border-t border-dashed border-slate-300"></div>

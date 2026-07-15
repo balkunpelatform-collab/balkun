@@ -1,8 +1,19 @@
+// مسیر: src/components/profile/WalletView.tsx
+//
+// 🆕 تسک ۷ چک‌لیست کارفرما (تفکیک کیف پول سازمانی + شارژ خودکار + غیرفعال‌سازی سازمان):
+// کارت «کیف پول سازمانی» از این پس دیگر wallet.orgBalance (که همیشه ۰ است) را نشان
+// نمی‌دهد؛ به‌جای آن، موجودی مشترک واقعی سازمان (که src/app/api/user/wallet/route.ts
+// در فیلد جدید «organization» برمی‌گرداند) نمایش داده می‌شود. چون این موجودی متعلق به
+// کل سازمان است (نه فقط این کاربر)، دکمه‌ی «+» برای شارژ مستقیم توسط کاربر از این کارت
+// حذف شد — شارژ کیف پول سازمانی از این پس فقط توسط مدیر ارشد بالکن (دستی یا خودکار)
+// از پنل ادمین انجام می‌شود. اگر سازمان توسط مدیریت غیرفعال شده باشد، یک بنر هشدار
+// به‌جای دکمه نمایش داده می‌شود.
+
 "use client";
 
 import { useEffect, useState } from "react";
 import { useRouter } from "next/navigation";
-import { Wallet as WalletIcon, TrendingUp, TrendingDown, Loader2, Plus, CreditCard, X } from "lucide-react";
+import { Wallet as WalletIcon, TrendingUp, TrendingDown, Loader2, Plus, CreditCard, X, AlertTriangle, Users } from "lucide-react";
 import { formatPrice } from "@/utils/priceCalculator";
 import type { Wallet, Transaction, UserType } from "@/types/database";
 
@@ -11,9 +22,30 @@ interface WalletViewProps {
   userType: UserType;
 }
 
+interface OrganizationWalletInfo {
+  id: string;
+  name: string;
+  isActive: boolean;
+  walletBalance: number;
+  autoChargeEnabled: boolean;
+}
+
+// 🆕 تسک ۲۰ (شفاف‌سازی تاریخچه کیف پول کاربر): از این پس هر تراکنشی که از
+// GET /api/user/wallet برمی‌گردد، همراه با فیلد «source» است — دقیقاً همان
+// ساختاری که در تسک ۱/۴ برای تاریخچه‌ی کیف پول پنل ادمین استفاده شده.
+interface TransactionWithSource extends Transaction {
+  source: {
+    category: string;
+    label: string;
+    description: string;
+    direction: "IN" | "OUT";
+  };
+}
+
 interface WalletData {
   wallet: Wallet;
-  recentTransactions: Transaction[];
+  recentTransactions: TransactionWithSource[];
+  organization: OrganizationWalletInfo | null;
 }
 
 export default function WalletView({ userId, userType }: WalletViewProps) {
@@ -22,14 +54,14 @@ export default function WalletView({ userId, userType }: WalletViewProps) {
   const [isLoading, setIsLoading] = useState(true);
   const [error, setError] = useState("");
   
-  // مدال شارژ کیف پول
+  // مدال شارژ (فقط برای کیف پول شخصی — نگاه کنید به توضیح بالای فایل)
   const [isChargeModalOpen, setIsChargeModalOpen] = useState(false);
   const [chargeAmount, setChargeAmount] = useState("");
-  const [chargeWalletType, setChargeWalletType] = useState<"NORMAL" | "ORGANIZATIONAL">("NORMAL");
   const [isCharging, setIsCharging] = useState(false);
 
   useEffect(() => {
     fetchWalletData();
+    // eslint-disable-next-line react-hooks/exhaustive-deps
   }, [userId]);
 
   const fetchWalletData = async () => {
@@ -61,7 +93,7 @@ export default function WalletView({ userId, userType }: WalletViewProps) {
         body: JSON.stringify({
           type: "WALLET_CHARGE",
           amount: Number(chargeAmount),
-          walletType: chargeWalletType
+          walletType: "NORMAL"
         })
       });
       const data = await res.json();
@@ -92,13 +124,13 @@ export default function WalletView({ userId, userType }: WalletViewProps) {
 
   if (!walletData) return null;
 
-  const { wallet, recentTransactions } = walletData;
+  const { wallet, recentTransactions, organization } = walletData;
   const isOrganizational = userType === "ORGANIZATIONAL";
 
   return (
     <div className="flex flex-col gap-6 relative">
       
-      {/* Modal شارژ */}
+      {/* Modal شارژ کیف پول شخصی */}
       {isChargeModalOpen && (
         <div className="fixed inset-0 z-50 flex items-center justify-center p-4">
            <div className="absolute inset-0 bg-black/60 backdrop-blur-sm" onClick={() => setIsChargeModalOpen(false)}></div>
@@ -147,7 +179,7 @@ export default function WalletView({ userId, userType }: WalletViewProps) {
               </div>
             </div>
             <button 
-              onClick={() => { setChargeWalletType("NORMAL"); setIsChargeModalOpen(true); }}
+              onClick={() => setIsChargeModalOpen(true)}
               className="w-10 h-10 bg-white/20 backdrop-blur-sm rounded-xl hover:bg-white/30 transition-colors flex items-center justify-center"
             >
               <Plus className="w-5 h-5" />
@@ -160,7 +192,11 @@ export default function WalletView({ userId, userType }: WalletViewProps) {
         </div>
 
         {isOrganizational && (
-          <div className="bg-gradient-to-br from-balkun-orange to-balkun-orange-dark rounded-[2rem] p-6 md:p-8 text-white shadow-xl">
+          <div className={`rounded-[2rem] p-6 md:p-8 text-white shadow-xl ${
+            organization?.isActive === false
+              ? "bg-gradient-to-br from-slate-400 to-slate-500"
+              : "bg-gradient-to-br from-balkun-orange to-balkun-orange-dark"
+          }`}>
             <div className="flex items-center justify-between mb-6">
               <div className="flex items-center gap-3">
                 <div className="w-12 h-12 bg-white/20 backdrop-blur-sm rounded-2xl flex items-center justify-center">
@@ -168,23 +204,40 @@ export default function WalletView({ userId, userType }: WalletViewProps) {
                 </div>
                 <div className="flex flex-col">
                   <span className="text-xs font-bold opacity-80">کیف پول سازمانی</span>
-                  <span className="text-[10px] opacity-60">اختصاصی پرسنل</span>
+                  <span className="text-[10px] opacity-60 flex items-center gap-1">
+                    <Users className="w-3 h-3" /> مشترک بین تمام پرسنل {organization?.name ? `«${organization.name}»` : "سازمان"}
+                  </span>
                 </div>
               </div>
-              <button 
-                onClick={() => { setChargeWalletType("ORGANIZATIONAL"); setIsChargeModalOpen(true); }}
-                className="w-10 h-10 bg-white/20 backdrop-blur-sm rounded-xl hover:bg-white/30 transition-colors flex items-center justify-center"
-              >
-                <Plus className="w-5 h-5" />
-              </button>
             </div>
-            <div className="flex flex-col gap-1">
-              <span className="text-3xl md:text-4xl font-black tracking-tight">{formatPrice(wallet.orgBalance)}</span>
-              <span className="text-sm font-bold opacity-70">تومان</span>
-            </div>
+            {organization?.isActive === false ? (
+              <div className="flex items-center gap-2 bg-white/15 rounded-xl px-3 py-2">
+                <AlertTriangle className="w-4 h-4 shrink-0" />
+                <span className="text-xs font-bold leading-relaxed">
+                  سازمان شما توسط بالکن غیرفعال شده و امکان استفاده از این کیف پول وجود ندارد.
+                </span>
+              </div>
+            ) : (
+              <div className="flex flex-col gap-1">
+                <span className="text-3xl md:text-4xl font-black tracking-tight">{formatPrice(organization?.walletBalance ?? 0)}</span>
+                <span className="text-sm font-bold opacity-70">تومان</span>
+              </div>
+            )}
           </div>
         )}
       </div>
+
+      {/* یادداشت درباره‌ی شارژ کیف پول سازمانی */}
+      {isOrganizational && organization?.isActive !== false && (
+        <div className="bg-balkun-orange/10 border border-balkun-orange/20 rounded-2xl p-4 flex gap-3">
+          <CreditCard className="w-5 h-5 text-balkun-orange shrink-0 mt-0.5" />
+          <p className="text-xs font-medium text-slate-600 leading-relaxed">
+            کیف پول سازمانی یک استخر مشترک است که توسط مدیریت بالکن برای سازمان شما شارژ می‌شود
+            (به‌صورت دستی یا خودکار طبق قرارداد سازمان شما) و تمام پرسنل سازمان می‌توانند از همین
+            موجودی برای پرداخت رزرو استفاده کنند.
+          </p>
+        </div>
+      )}
 
       {/* تاریخچه تراکنش‌ها */}
       <div className="bg-white rounded-[2rem] border border-slate-100 shadow-sm p-6">
@@ -197,21 +250,27 @@ export default function WalletView({ userId, userType }: WalletViewProps) {
         ) : (
           <div className="flex flex-col gap-3">
             {recentTransactions.map((transaction) => {
-              const isDeposit = transaction.type === "DEPOSIT";
+              // 🆕 تسک ۲۰: به‌جای برچسب یکنواخت قبلی («واریز / پرداخت آنلاین» یا
+              // «برداشت از کیف پول» برای همه‌ی تراکنش‌ها)، حالا از منبع دقیق هر
+              // تراکنش (transaction.source) استفاده می‌شود — هم برای عنوان کوتاه
+              // (label) و هم برای توضیح کامل و شفاف زیر آن (description)، دقیقاً
+              // مطابق دو مثال متن خواسته‌شده کارفرما در چک‌لیست.
+              const isIncoming = transaction.source.direction === "IN";
               const statusColor = transaction.gatewayStatus === "SUCCESS" ? "text-green-600" : transaction.gatewayStatus === "PENDING" ? "text-balkun-yellow" : "text-red-600";
               return (
                 <div key={transaction.id} className="flex items-center justify-between p-4 bg-slate-50 rounded-xl border border-slate-100 hover:border-balkun-cyan/30 transition-colors">
                   <div className="flex items-center gap-4">
-                    <div className={`w-10 h-10 rounded-xl flex items-center justify-center ${isDeposit ? "bg-green-100 text-green-600" : "bg-red-100 text-red-600"}`}>
-                      {isDeposit ? <TrendingUp className="w-5 h-5" /> : <TrendingDown className="w-5 h-5" />}
+                    <div className={`w-10 h-10 rounded-xl flex items-center justify-center shrink-0 ${isIncoming ? "bg-green-100 text-green-600" : "bg-red-100 text-red-600"}`}>
+                      {isIncoming ? <TrendingUp className="w-5 h-5" /> : <TrendingDown className="w-5 h-5" />}
                     </div>
                     <div className="flex flex-col">
-                      <span className="text-sm font-bold text-slate-700">{isDeposit ? "واریز / پرداخت آنلاین" : "برداشت از کیف پول"}</span>
-                      <span className="text-[10px] font-bold text-slate-400" dir="ltr">{new Date(transaction.createdAt).toLocaleString("fa-IR")}</span>
+                      <span className="text-sm font-bold text-slate-700">{transaction.source.label}</span>
+                      <span className="text-[11px] font-medium text-slate-500 leading-relaxed mt-0.5">{transaction.source.description}</span>
+                      <span className="text-[10px] font-bold text-slate-400 mt-1" dir="ltr">{new Date(transaction.createdAt).toLocaleString("fa-IR")}</span>
                     </div>
                   </div>
-                  <div className="flex flex-col items-end gap-1">
-                    <span className={`text-base font-black ${isDeposit ? "text-green-600" : "text-red-600"}`}>{isDeposit ? "+" : "-"}{formatPrice(transaction.amount)} تومان</span>
+                  <div className="flex flex-col items-end gap-1 shrink-0 pr-2">
+                    <span className={`text-base font-black ${isIncoming ? "text-green-600" : "text-red-600"}`}>{isIncoming ? "+" : "-"}{formatPrice(transaction.amount)} تومان</span>
                     <span className={`text-[10px] font-bold ${statusColor}`}>{transaction.gatewayStatus === "SUCCESS" ? "موفق" : transaction.gatewayStatus === "PENDING" ? "در انتظار" : "ناموفق"}</span>
                   </div>
                 </div>

@@ -1,7 +1,24 @@
 // مسیر: src/components/layout/header/Header.tsx
 // این فایل را به‌طور کامل جایگزین فایل فعلی کنید
-// 🆕 رفع باگ: دکمه همبرگری موبایل اکنون MobileMenu.tsx را باز می‌کند (قبلاً onClick نداشت)
+// 🆕 لینک همبرگری موبایل اکنون MobileMenu.tsx را باز می‌کند (قبلاً onClick نداشت)
 // 🆕 لینک «پنل مدیریت» برای کاربرانی که role آن‌ها SUPER_ADMIN یا SUPPORT_AGENT است اضافه شد
+// 🐛→✅ تسک ۱۹: رفع خطای 404 در منوی «کیف پول» — لینک از مسیر ناموجود «/wallet»
+// به مسیر واقعی صفحه‌ی پروفایل با تب کیف پول یعنی «/profile?tab=wallet» اصلاح شد
+// (طبق src/app/profile/page.tsx فقط چنین مسیری صفحه‌ی WalletView را رندر می‌کند)
+//
+// 🐛→✅ تسک ۲۴: رفع باگ صدور ووچر PDF از صفحه سایت
+// ریشه‌ی باگ: صفحه‌ی ووچر (src/app/voucher/[id]/page.tsx) داخل Layout اصلی سایت
+// (src/app/layout.tsx) رندر می‌شود؛ یعنی Header همیشه بالای صفحه‌ی ووچر هم هست.
+// وقتی کاربر روی دکمه‌ی «چاپ ووچر» می‌زد و window.print() اجرا می‌شد (یا از PDF مرورگر
+// خروجی می‌گرفت)، چون تگ <header> کلاس print:hidden نداشت، کل منوی بالای سایت
+// (خانه، بلاگ، پشتیبانی، درباره ما، خدمات سازمانی و ...) هم داخل PDF/برگه‌ی چاپ‌شده
+// می‌افتاد. با اضافه شدن کلاس print:hidden، مرورگر هنگام چاپ کل این المنت را نادیده
+// می‌گیرد و فقط محتوای خودِ ووچر چاپ می‌شود.
+//
+// 🆕 تسک ۱۵ چک‌لیست کارفرما («زنگوله بالای هدر کاربردی ندارد»): دکمه‌ی ثابت زنگوله
+// (بدون onClick و با نقطه‌ی نارنجی هاردکد) با کامپوننت جدید NotificationBell جایگزین
+// شد که به جدول واقعی notifications وصل است — نگاه کن به
+// src/components/layout/header/NotificationBell.tsx.
 
 "use client";
 
@@ -9,10 +26,11 @@ import { useEffect, useRef, useState } from "react";
 import Link from "next/link";
 import Image from "next/image";
 import { useRouter } from "next/navigation";
-import { User, Menu, Bell, LogOut, Wallet, ShieldCheck } from "lucide-react";
+import { User, Menu, LogOut, Wallet, ShieldCheck } from "lucide-react";
 import { HEADER_LINKS } from "@/constants/navigation";
 import { useAuthStore } from "@/store/authStore";
 import MobileMenu from "./MobileMenu";
+import NotificationBell from "./NotificationBell";
 
 export default function Header() {
   const router = useRouter();
@@ -41,7 +59,7 @@ export default function Header() {
   };
 
   return (
-    <header className="sticky top-0 z-50 w-full bg-white/95 backdrop-blur-md border-b border-slate-200 shadow-sm">
+    <header className="print:hidden sticky top-0 z-50 w-full bg-white/95 backdrop-blur-md border-b border-slate-200 shadow-sm">
       <div className="container mx-auto px-4 h-16 flex items-center justify-between">
 
         <div className="flex-1 flex items-center justify-start gap-4">
@@ -83,10 +101,7 @@ export default function Header() {
         </div>
 
         <div className="flex-1 flex items-center justify-end gap-3">
-          <button className="relative p-2 text-slate-700 hover:text-balkun-cyan transition-colors">
-            <Bell className="w-6 h-6" />
-            <span className="absolute top-1 right-1 w-2.5 h-2.5 bg-balkun-orange rounded-full border-2 border-white"></span>
-          </button>
+          <NotificationBell />
 
           {isAuthenticated && user ? (
             <div className="relative hidden sm:block" ref={menuRef}>
@@ -116,7 +131,7 @@ export default function Header() {
                     پروفایل من
                   </Link>
                   <Link
-                    href="/wallet"
+                    href="/profile?tab=wallet"
                     onClick={() => setMenuOpen(false)}
                     className="flex items-center gap-2 px-4 py-2.5 text-sm font-bold text-slate-700 hover:bg-slate-50 transition-colors"
                   >

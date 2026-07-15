@@ -2,6 +2,24 @@
 // 🆕 فاز ۱۱ / بخش ۴: آیتم «مدیریت بلاگ» با tabKey="blog" اضافه شد.
 // 🆕 آیتم «سازمانی» با tabKey="corporate" اضافه شد — مرکز مدیریت لیدهای
 // سازمانی و لیست سفید شماره‌ها.
+// 🆕 تسک ۱ (تاریخچه کیف پول برای مالی و مدیر ارشد): آیتم «تاریخچه کیف پول» اضافه شد.
+// این آیتم tabKey ندارد (مثل «کاربران و مالی») چون بخش تفویض‌دسترسی SUPPORT_AGENT
+// روی آن اعمال نمی‌شود؛ فقط دو نقش ثابت SUPER_ADMIN و FINANCE_MANAGER به آن دسترسی دارند.
+// 🆕 تسک ۲ (نمایش لاگ فعالیت‌های پشتیبانی، مالی و مدیر ارشد): آیتم «لاگ فعالیت‌ها»
+// اضافه شد. این هم مثل «تاریخچه کیف پول» tabKey ندارد، اما برخلاف آن، هر سه نقش
+// (SUPER_ADMIN، SUPPORT_AGENT، FINANCE_MANAGER) به آن دسترسی دارند — چون قرار است
+// هر کارمند بتواند تاریخچه‌ی اقدامات خودش را ببیند (نه فقط مدیر ارشد).
+// 🆕 تسک ۳ (دسترسی داشبورد برای مدیر مالی): نقش FINANCE_MANAGER به roles آیتم‌های
+// «داشبورد کلان» و «کاربران و مالی» هم اضافه شد. توجه: در صفحه‌ی جزئیات کاربر
+// (admin/users/[id]/page.tsx)، تمام دکمه‌ها/فیلدهای نوشتنی (تغییر نقش، تغییر نوع
+// حساب، عملیات دستی کیف پول) از قبل و مستقل از این تغییر، فقط برای isSuperAdmin
+// فعال هستند؛ پس این تغییر صرفاً «مشاهده» را برای مدیر مالی باز می‌کند.
+// 🆕 تسک ۴ (مشاهده کامل پرداخت‌ها توسط مدیر مالی و مدیر ارشد): آیتم «پرداخت‌ها»
+// اضافه شد. این هم مثل «تاریخچه کیف پول» tabKey ندارد و فقط دو نقش ثابت
+// SUPER_ADMIN و FINANCE_MANAGER به آن دسترسی دارند (نه SUPPORT_AGENT).
+// 🆕 تسک ۱۸ چک‌لیست کارفرما (امکان تغییر بنر اصلی صفحه اول): آیتم «بنر اصلی
+// صفحه اول» با tabKey="banners" اضافه شد — دقیقاً هم‌الگو با «مدیریت بلاگ»:
+// محتوایی است، نه مالی/حساس، پس برای SUPPORT_AGENT هم قابل واگذاری است.
 
 "use client";
 
@@ -19,6 +37,10 @@ import {
   Home,
   Newspaper,
   Building2,
+  Wallet,
+  History,
+  Landmark,
+  Images,
   type LucideIcon,
 } from "lucide-react";
 import { useAuthStore } from "@/store/authStore";
@@ -35,10 +57,14 @@ interface AdminNavItem {
 }
 
 const ADMIN_NAV: AdminNavItem[] = [
-  { id: "dashboard", label: "داشبورد کلان", href: "/admin", icon: LayoutDashboard, roles: ["SUPER_ADMIN"] },
-  { id: "users", label: "کاربران و مالی", href: "/admin/users", icon: Users, roles: ["SUPER_ADMIN"] },
+  { id: "dashboard", label: "داشبورد کلان", href: "/admin", icon: LayoutDashboard, roles: ["SUPER_ADMIN", "FINANCE_MANAGER"] },
+  { id: "users", label: "کاربران و مالی", href: "/admin/users", icon: Users, roles: ["SUPER_ADMIN", "FINANCE_MANAGER"] },
+  { id: "wallet-history", label: "تاریخچه کیف پول", href: "/admin/wallet-history", icon: Wallet, roles: ["SUPER_ADMIN", "FINANCE_MANAGER"] },
+  { id: "payments", label: "پرداخت‌ها", href: "/admin/payments", icon: Landmark, roles: ["SUPER_ADMIN", "FINANCE_MANAGER"] },
+  { id: "activity-log", label: "لاگ فعالیت‌ها", href: "/admin/activity-log", icon: History, roles: ["SUPER_ADMIN", "SUPPORT_AGENT", "FINANCE_MANAGER"] },
   { id: "accommodations", label: "اقامتگاه‌های اختصاصی", href: "/admin/accommodations", icon: Home, roles: ["SUPER_ADMIN", "SUPPORT_AGENT"], tabKey: "accommodations" },
   { id: "blog", label: "مدیریت بلاگ", href: "/admin/blog", icon: Newspaper, roles: ["SUPER_ADMIN", "SUPPORT_AGENT"], tabKey: "blog" },
+  { id: "banners", label: "بنر اصلی صفحه اول", href: "/admin/banners", icon: Images, roles: ["SUPER_ADMIN", "SUPPORT_AGENT"], tabKey: "banners" },
   { id: "bookings", label: "مدیریت رزروها", href: "/admin/bookings", icon: CalendarDays, roles: ["SUPER_ADMIN", "SUPPORT_AGENT"], tabKey: "bookings" },
   { id: "corporate", label: "سازمانی", href: "/admin/corporate", icon: Building2, roles: ["SUPER_ADMIN", "SUPPORT_AGENT"], tabKey: "corporate" },
   { id: "tickets", label: "مرکز تیکتینگ", href: "/admin/tickets", icon: HeadphonesIcon, roles: ["SUPER_ADMIN", "SUPPORT_AGENT"], tabKey: "tickets" },
@@ -74,7 +100,11 @@ export default function AdminSidebar({ onClose }: { onClose?: () => void }) {
         <div className="flex flex-col">
           <span className="font-black text-white text-lg tracking-wide">پنل مدیریت</span>
           <span className="text-[10px] font-bold text-balkun-yellow uppercase tracking-widest">
-            {user.role === "SUPER_ADMIN" ? "Super Admin" : "Support Agent"}
+            {user.role === "SUPER_ADMIN"
+              ? "Super Admin"
+              : user.role === "FINANCE_MANAGER"
+              ? "Finance Manager"
+              : "Support Agent"}
           </span>
         </div>
       </div>

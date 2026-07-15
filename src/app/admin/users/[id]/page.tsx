@@ -2,7 +2,7 @@
 
 import { useEffect, useState, use } from "react";
 import { useRouter } from "next/navigation";
-import { ArrowRight, User, Wallet, ShieldCheck, Save, Loader2 } from "lucide-react";
+import { ArrowRight, User, Wallet, ShieldCheck, Save, Loader2, Building2, AlertTriangle } from "lucide-react";
 import { formatPrice } from "@/utils/priceCalculator";
 import { useAuthStore } from "@/store/authStore";
 import { ADMIN_TAB_KEYS, ADMIN_TAB_LABELS } from "@/constants/adminPermissions";
@@ -21,7 +21,18 @@ interface UserDetail {
 
 interface UserWallet {
   normalBalance: number;
-  orgBalance: number;
+}
+
+// 🆕 (۲۰۲۶/۰۷/۱۵) موجودی سازمانی دیگر شخصی نیست؛ یک استخر مشترک به ازای هر سازمان است
+// که از جدول organizations خوانده می‌شود (نه از wallets.orgBalance که همیشه ۰ است).
+interface OrganizationWallet {
+  id: string;
+  name: string;
+  isActive: boolean;
+  walletBalance: number;
+  autoChargeEnabled: boolean;
+  autoChargeAmount: number;
+  autoChargeIntervalDays: number;
 }
 
 export default function AdminUserDetailPage({ params }: { params: Promise<{ id: string }> }) {
@@ -32,6 +43,7 @@ export default function AdminUserDetailPage({ params }: { params: Promise<{ id: 
 
   const [user, setUser] = useState<UserDetail | null>(null);
   const [wallet, setWallet] = useState<UserWallet | null>(null);
+  const [organization, setOrganization] = useState<OrganizationWallet | null>(null);
   const [isLoading, setIsLoading] = useState(true);
 
   // فرم تنظیمات نقش
@@ -68,6 +80,7 @@ export default function AdminUserDetailPage({ params }: { params: Promise<{ id: 
       if (data.success) {
         setUser(data.user);
         setWallet(data.wallet);
+        setOrganization(data.organization || null);
         setSelectedRole(data.user.role);
         setUserType(data.user.userType);
         setOrgName(data.user.organizationName || "");
@@ -119,8 +132,11 @@ export default function AdminUserDetailPage({ params }: { params: Promise<{ id: 
         body: JSON.stringify({ userType, organizationName: orgName }),
       });
       const data = await res.json();
-      if (data.success) showMessage("نوع حساب کاربر با موفقیت تغییر کرد", "success");
-      else showMessage(data.error, "error");
+      if (data.success) {
+        showMessage("نوع حساب کاربر با موفقیت تغییر کرد", "success");
+        // 🆕 نوع/نام سازمان عوض شده، پس موجودی سازمانی نمایش‌داده‌شده هم باید رفرش شود
+        fetchUserDetails();
+      } else showMessage(data.error, "error");
     } catch {
       showMessage("خطا در ارتباط با سرور", "error");
     } finally {
@@ -185,6 +201,10 @@ export default function AdminUserDetailPage({ params }: { params: Promise<{ id: 
       if (data.success) {
         showMessage("عملیات کیف پول با موفقیت انجام شد", "success");
         setWallet(data.wallet);
+        // 🆕 وقتی عملیات روی کیف پول سازمانی بوده، سرور موجودی به‌روز‌شده‌ی استخر
+        // مشترک سازمان را هم در data.organization برمی‌گرداند؛ همان را نمایش می‌دهیم
+        // تا کارت «موجودی سازمانی» بلافاصله و بدون رفرش صفحه درست شود.
+        if (data.organization) setOrganization(data.organization);
         setAdjustAmount("");
         setAdjustReason("");
       } else {
@@ -253,6 +273,7 @@ export default function AdminUserDetailPage({ params }: { params: Promise<{ id: 
               >
                 <option value="USER">کاربر عادی</option>
                 <option value="SUPPORT_AGENT">پشتیبان بالکن</option>
+                <option value="FINANCE_MANAGER">مدیر مالی (Finance Manager)</option>
                 <option value="SUPER_ADMIN">مدیر ارشد (Super Admin)</option>
               </select>
             </div>
@@ -303,7 +324,10 @@ export default function AdminUserDetailPage({ params }: { params: Promise<{ id: 
           </div>
 
           {/* 🆕 دسترسی به تب‌های پنل مدیریت (فاز ۱۱، بخش ۳) */}
-          {(user.role === "SUPPORT_AGENT" || user.role === "SUPER_ADMIN") && (
+          {/* 🆕 تسک ۱: نقش FINANCE_MANAGER هم اینجا نمایش داده می‌شود، اما چون دسترسی این
+              نقش «ثابت» است (نه تفویضی مثل SUPPORT_AGENT)، به‌جای چک‌باکس‌های تب، فقط
+              توضیح دامنه‌ی فعلی دسترسی‌اش نشان داده می‌شود. */}
+          {(user.role === "SUPPORT_AGENT" || user.role === "SUPER_ADMIN" || user.role === "FINANCE_MANAGER") && (
             <div className="bg-white rounded-2xl p-6 border border-slate-100 shadow-sm flex flex-col gap-4">
               <h2 className="text-lg font-black text-slate-800 flex items-center gap-2 border-b border-slate-100 pb-3">
                 <ShieldCheck className="w-5 h-5 text-balkun-cyan" />
@@ -313,6 +337,16 @@ export default function AdminUserDetailPage({ params }: { params: Promise<{ id: 
               {user.role === "SUPER_ADMIN" ? (
                 <div className="bg-slate-50 text-slate-600 p-4 rounded-xl text-sm font-bold">
                   این کاربر «مدیر ارشد» است و مستقل از این تنظیمات، همیشه به تمام تب‌های پنل دسترسی کامل دارد.
+                </div>
+              ) : user.role === "FINANCE_MANAGER" ? (
+                <div className="bg-balkun-yellow/10 text-amber-800 p-4 rounded-xl text-sm font-bold leading-relaxed">
+                  این کاربر «مدیر مالی» است. دسترسی این نقش تفویضی نیست (مثل پشتیبان‌ها) بلکه ثابت
+                  و از پیش تعریف‌شده است. در وضعیت فعلی، مدیر مالی به «داشبورد کلان»، «تاریخچه کامل
+                  کیف پول»، «لاگ فعالیت‌ها (فقط اقدامات خودش)» و «مشاهده‌ی کاربران و فعالیت آن‌ها»
+                  (همین صفحه، شامل موجودی و ۱۰ تراکنش/رزرو اخیر) دسترسی دارد — اما مثل همین صفحه،
+                  هیچ‌کدام از عملیات نوشتنی/حساس (تغییر نقش، تغییر نوع حساب، عملیات دستی کیف پول)
+                  را نمی‌تواند انجام دهد. بر اساس تسک‌های بعدی پروژه (مشاهده کامل پرداخت‌ها) این
+                  دامنه به‌تدریج گسترش می‌یابد.
                 </div>
               ) : (
                 <>
@@ -371,9 +405,29 @@ export default function AdminUserDetailPage({ params }: { params: Promise<{ id: 
                <span className="text-xs font-bold text-slate-500">موجودی عادی</span>
                <span className="text-lg font-black text-balkun-navy">{formatPrice(wallet?.normalBalance || 0)} <span className="text-[10px] font-normal">تومان</span></span>
             </div>
+
+            {/* 🆕 (۲۰۲۶/۰۷/۱۵) این کارت اصلاح شد: قبلاً از wallet.orgBalance (فیلد قدیمی و
+                شخصی که از تسک ۷ به بعد همیشه ۰ است) می‌خواند و همیشه ۰ نشان می‌داد؛ حالا
+                موجودی واقعی استخر مشترک سازمانِ همین کاربر (organization.walletBalance) را
+                نشان می‌دهد — همان عددی که در تب «کیف پول‌های سازمانی» پنل هم دیده می‌شود. */}
             <div className="bg-slate-50 rounded-xl p-4 border border-slate-100 flex flex-col gap-1">
-               <span className="text-xs font-bold text-slate-500">موجودی سازمانی</span>
-               <span className="text-lg font-black text-balkun-navy">{formatPrice(wallet?.orgBalance || 0)} <span className="text-[10px] font-normal">تومان</span></span>
+               <span className="text-xs font-bold text-slate-500 flex items-center gap-1.5">
+                 <Building2 className="w-3.5 h-3.5 text-slate-400" />
+                 موجودی سازمانی (استخر مشترک)
+               </span>
+               <span className="text-lg font-black text-balkun-navy">
+                 {formatPrice(organization?.walletBalance || 0)} <span className="text-[10px] font-normal">تومان</span>
+               </span>
+               {organization && !organization.isActive && (
+                 <span className="inline-flex w-fit items-center gap-1 mt-1 text-[10px] font-bold px-2 py-0.5 rounded-md bg-red-50 text-red-500">
+                   <AlertTriangle className="w-3 h-3" /> سازمان غیرفعال است
+                 </span>
+               )}
+               {user.userType === "ORGANIZATIONAL" && !organization && (
+                 <span className="text-[10px] font-bold text-orange-500 mt-1 leading-relaxed">
+                   سازمان «{user.organizationName}» هنوز در سیستم کیف پول ثبت نشده است.
+                 </span>
+               )}
             </div>
           </div>
 
@@ -395,6 +449,13 @@ export default function AdminUserDetailPage({ params }: { params: Promise<{ id: 
                   <option value="WITHDRAWAL">برداشت (کسر)</option>
                 </select>
               </div>
+
+              {/* 🆕 یادآوری برای ادمین: عملیات سازمانی روی کل پرسنل سازمان اثر می‌گذارد */}
+              {adjustWalletType === "ORGANIZATIONAL" && (
+                <div className="text-[11px] font-bold text-amber-700 bg-balkun-yellow/10 px-3 py-2 rounded-lg leading-relaxed">
+                  توجه: این عملیات روی استخر مشترک کل سازمان «{user.organizationName || "—"}» اعمال می‌شود، نه فقط همین کاربر؛ روی موجودی همه‌ی پرسنل آن سازمان اثر دارد.
+                </div>
+              )}
 
               <div className="flex flex-col gap-1">
                 <label className="text-xs font-bold text-slate-500">مبلغ (تومان)</label>

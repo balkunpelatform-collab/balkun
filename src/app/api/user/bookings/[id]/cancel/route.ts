@@ -1,6 +1,13 @@
+// مسیر: src/app/api/user/bookings/[id]/cancel/route.ts
+//
+// 🆕 تسک ۱۵ چک‌لیست کارفرما (نمایش زنگوله‌ی هدر واقعی): بعد از لغو موفق رزرو،
+// علاوه بر پیامک، یک اعلان درون‌برنامه‌ای هم برای همان کاربر ثبت می‌شود تا در
+// تاریخچه‌ی زنگوله‌ی هدرش هم بماند.
+
 import { NextRequest, NextResponse } from "next/server";
 import { supabaseAdmin } from "@/lib/supabase-admin";
 import { sendBookingCancelledSms, sendRefundSms } from "@/lib/sms/smsService";
+import { createNotification } from "@/lib/notifications/notificationService";
 import { formatPrice } from "@/utils/priceCalculator";
 import { CANCELLATION_DEADLINE_HOURS } from "@/constants/booking";
 
@@ -104,6 +111,17 @@ export async function POST(
           await sendRefundSms(guestUser.phoneNumber, guestUser.firstName, formatPrice(booking.totalPaidAmount));
         }
       }
+
+      // 🆕 تسک ۱۵ چک‌لیست کارفرما — ثبت اعلان درون‌برنامه‌ای لغو رزرو (زنگوله‌ی هدر)
+      await createNotification({
+        userId,
+        type: "BOOKING_CANCELLED",
+        title: "رزرو شما لغو شد",
+        message: wasPaidConfirmed
+          ? `رزرو «${booking.roomName}» طبق درخواست شما لغو شد و مبلغ پرداختی به کیف پول شما بازگردانده شد.`
+          : `رزرو «${booking.roomName}» طبق درخواست شما لغو شد.`,
+        linkUrl: "/profile?tab=bookings",
+      });
     } catch (smsError) {
       console.error("Booking Cancellation SMS Error (non-blocking):", smsError);
     }

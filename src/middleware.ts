@@ -7,6 +7,9 @@
 // ورودی کاربر) در هدر داخلی به Route Handler بعدی پاس می‌دهد.
 // 🆕 برای مسیرهای /admin و /api/admin، یک بررسی سریع نقش هم انجام می‌شود (فقط برای UX سریع؛
 // بررسی نهایی و معتبر همیشه در خود Route Handler با src/lib/auth/adminAuth.ts انجام می‌شود).
+// 🆕 تسک ۱: نقش FINANCE_MANAGER (مدیر مالی) به ADMIN_ROLES اضافه شد تا این نقش هم
+// بتواند وارد پنل مدیریت (/admin) و API های زیر /api/admin شود؛ سطح دقیق دسترسی هر
+// مسیر همچنان در خودِ Route Handler با requireAdminRole کنترل می‌شود.
 // 🔒 اصلاحیه امنیتی (بند ۱.۱ تسک تکمیل): مسیر /voucher به لیست صفحات محافظت‌شده اضافه شد
 // تا دیگر هیچ‌کس بدون لاگین نتواند فقط با حدس زدن آیدی رزرو، به ووچر (شامل کد ملی و شماره
 // موبایل مهمان) دسترسی پیدا کند. بررسی مالکیت دقیق (اینکه این ووچر متعلق به همین کاربر است یا نه)
@@ -19,7 +22,7 @@ const PROTECTED_PAGE_PREFIXES = ["/profile", "/support", "/voucher"];
 const ADMIN_PAGE_PREFIXES = ["/admin"];
 const PROTECTED_API_PREFIXES = ["/api/user", "/api/booking/create", "/api/support"];
 const ADMIN_API_PREFIXES = ["/api/admin"];
-const ADMIN_ROLES = ["SUPER_ADMIN", "SUPPORT_AGENT"];
+const ADMIN_ROLES = ["SUPER_ADMIN", "SUPPORT_AGENT", "FINANCE_MANAGER"];
 
 function matchesAny(pathname: string, prefixes: string[]): boolean {
   return prefixes.some((p) => pathname === p || pathname.startsWith(`${p}/`));

@@ -3,12 +3,17 @@
 // که در لحظه ثبت‌نام به‌صورت خودکار userType=ORGANIZATIONAL می‌گیرند
 // (src/app/api/auth/register/route.ts این جدول را می‌خواند).
 // POST: افزودن شماره جدید به این لیست سفید.
-// قبل از این فایل، هیچ رابط کاربری‌ای برای این جدول وجود نداشت و افزودن هر
-// شماره‌ی سازمانی جدید فقط از طریق دیتابیس Supabase ممکن بود.
+//
+// 🆕 تسک ۷ چک‌لیست کارفرما (تفکیک کیف پول سازمانی + شارژ خودکار + غیرفعال‌سازی سازمان):
+// بعد از افزودن موفق یک شماره جدید، اگر نام سازمان آن هنوز در جدول جدید `organizations`
+// وجود نداشته باشد، همین‌جا ساخته می‌شود (ensureOrganizationExists) تا بلافاصله در تب
+// «کیف پول‌های سازمانی» پنل ادمین قابل مدیریت باشد — نیازی نیست منتظر ثبت‌نام واقعی
+// کاربر بمانیم.
 
 import { NextRequest, NextResponse } from "next/server";
 import { supabaseAdmin } from "@/lib/supabase-admin";
 import { requireAdminTabAccess, logAdminAction } from "@/lib/auth/adminAuth";
+import { ensureOrganizationExists } from "@/lib/wallet/ensureOrganization";
 
 export async function GET(request: NextRequest) {
   const admin = await requireAdminTabAccess(request, "corporate");
@@ -78,6 +83,9 @@ export async function POST(request: NextRequest) {
     console.error("Admin Corporate Number Insert Error:", error);
     return NextResponse.json({ success: false, error: "خطا در افزودن شماره سازمانی" }, { status: 500 });
   }
+
+  // 🆕 تسک ۷: تضمین وجود ردیف سازمان (برای کیف پول مشترک سازمانی)
+  await ensureOrganizationExists(organizationName.trim());
 
   await logAdminAction({
     adminId: admin.userId,

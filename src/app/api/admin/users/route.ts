@@ -2,15 +2,19 @@
 // GET: لیست کاربران با قابلیت جستجو بر اساس نام یا شماره موبایل (صفحه‌بندی سمت سرور طبق سند فاز ۹)
 // 🆕 فیلتر اختیاری userType اضافه شد (مثلاً userType=ORGANIZATIONAL) تا تب «سازمانی»
 // پنل ادمین بتواند فقط کاربران سازمانی را از همین یک منبع واحد نمایش دهد —
-// بدون تکرار کوئری یا ساخت جدول/روت جدید. دسترسی همچنان فقط SUPER_ADMIN است
-// (بدون تغییر نسبت به قبل)، چون این روت اطلاعات نقش کاربران را هم برمی‌گرداند.
+// بدون تکرار کوئری یا ساخت جدول/روت جدید.
+// 🆕 تسک ۳ (دسترسی داشبورد برای مدیر مالی): نقش FINANCE_MANAGER هم به این روت
+// (فقط GET / فقط-خواندنی) دسترسی گرفت تا بتواند لیست کاربران را ببیند. توجه: روت‌های
+// نوشتنی روی کاربر (تغییر نقش/نوع/دسترسی/کیف پول در src/app/api/admin/users/[id]/*)
+// دست‌نخورده باقی ماندند و همچنان منحصراً SUPER_ADMIN هستند — مدیر مالی فقط می‌بیند،
+// چیزی را تغییر نمی‌دهد.
 
 import { NextResponse } from "next/server";
 import { supabaseAdmin } from "@/lib/supabase-admin";
 import { requireAdminRole } from "@/lib/auth/adminAuth";
 
 export async function GET(request: Request) {
-  const admin = await requireAdminRole(request, ["SUPER_ADMIN"]);
+  const admin = await requireAdminRole(request, ["SUPER_ADMIN", "FINANCE_MANAGER"]);
   if (!admin) {
     return NextResponse.json({ success: false, error: "دسترسی غیرمجاز" }, { status: 403 });
   }

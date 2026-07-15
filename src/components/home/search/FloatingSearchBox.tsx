@@ -12,6 +12,23 @@
 //
 // 🆕 رفع باگ دوم: باکس انتخاب تعداد مسافران قبلاً با کلیک بیرون از آن بسته نمی‌شد؛
 // اکنون با کلیک در هر جای دیگر صفحه بسته می‌شود.
+//
+// 🆕 تسک ۱۲ چک‌لیست کارفرما (نمایش جستجوی بالای صفحات دسته‌بندی اقامتگاه):
+// این کامپوننت قبلاً فقط در صفحه‌ی اول (src/app/page.tsx) و با فرض وجود بنر Hero
+// زیرش استفاده می‌شد (به همین دلیل حاشیه‌ی منفی -mt-24 برای «شناور» شدن روی بنر
+// داشت). حالا همان کامپوننت — بدون کپی/تکرار کد — در صفحه‌ی نتایج جستجو
+// (src/app/search/page.tsx، که همان صفحه‌ی هر دسته‌بندی مثل کلبه/ویلا-سوئیت/
+// اقامتگاه اختصاصی است، چون آن صفحات همگی از طریق /search?category=... رندر
+// می‌شوند) هم بالای نتایج نمایش داده می‌شود. برای این کار دو نوع Prop اضافه شد:
+//   ۱. `variant` — در صفحه‌ی اول همان حالت قبلی «شناور روی بنر» (floating، پیش‌فرض) را
+//      دارد؛ در صفحه‌ی جستجو/دسته‌بندی حالت «inline» (بدون حاشیه‌ی منفی، چیده‌شده در
+//      جریان عادی صفحه) استفاده می‌شود.
+//   ۲. `initialCity` / `initialCheckin` / `initialCheckout` / `initialPerson` / `category` —
+//      وقتی این باکس در صفحه‌ی نتایج نمایش داده می‌شود، از قبل با فیلترهای فعلی کاربر
+//      (مقصد، تاریخ، تعداد نفرات) پر می‌شود تا کاربر مجبور به وارد کردن دوباره‌ی همه‌چیز
+//      از صفر نباشد؛ اگر کاربر جست‌وجوی جدیدی از همین‌جا انجام دهد، پارامتر `category`
+//      فعلی صفحه (اگر وجود داشت) در جست‌وجوی جدید هم حفظ می‌شود تا از همان دسته‌بندی
+//      خارج نشود.
 
 "use client";
 
@@ -26,14 +43,44 @@ import gregorian_en from "react-date-object/locales/gregorian_en";
 import { HERO_CONTENT } from "@/constants/home";
 import type { OtaghakCity } from "@/lib/otaghak/types";
 
-export default function FloatingSearchBox() {
+interface FloatingSearchBoxProps {
+  // "floating" (پیش‌فرض): همان رفتار قبلی، برای نمایش روی بنر صفحه‌ی اول.
+  // "inline": بدون حاشیه‌ی منفی، برای نمایش در جریان عادی صفحه (مثلاً بالای نتایج جستجو).
+  variant?: "floating" | "inline";
+  initialCity?: string;
+  // فرمت میلادی استاندارد YYYY-MM-DD (همان چیزی که از URL صفحه‌ی جستجو می‌آید)
+  initialCheckin?: string;
+  initialCheckout?: string;
+  initialPerson?: number;
+  // اگر این باکس داخل یک صفحه‌ی دسته‌بندی خاص (/search?category=...) نمایش داده شود،
+  // جست‌وجوی جدید هم در همان دسته‌بندی انجام می‌شود.
+  category?: string;
+}
+
+export default function FloatingSearchBox({
+  variant = "floating",
+  initialCity = "",
+  initialCheckin = "",
+  initialCheckout = "",
+  initialPerson = 2,
+  category = "",
+}: FloatingSearchBoxProps) {
   const router = useRouter();
 
   const [cities, setCities] = useState<OtaghakCity[]>([]);
-  const [selectedCity, setSelectedCity] = useState("");
+  const [selectedCity, setSelectedCity] = useState(initialCity);
   // تاریخ ورود و خروج به‌صورت بازه‌ی شمسی (Persian DateObject) نگهداری می‌شود
-  const [dates, setDates] = useState<DateObject[]>([]);
-  const [person, setPerson] = useState(2);
+  const [dates, setDates] = useState<DateObject[]>(() => {
+    if (!initialCheckin || !initialCheckout) return [];
+    try {
+      const checkinObj = new DateObject({ date: initialCheckin, format: "YYYY-MM-DD", calendar: gregorian, locale: gregorian_en }).convert(persian, persian_fa);
+      const checkoutObj = new DateObject({ date: initialCheckout, format: "YYYY-MM-DD", calendar: gregorian, locale: gregorian_en }).convert(persian, persian_fa);
+      return [checkinObj, checkoutObj];
+    } catch {
+      return [];
+    }
+  });
+  const [person, setPerson] = useState(initialPerson);
   const [isPersonOpen, setIsPersonOpen] = useState(false);
 
   const personBoxRef = useRef<HTMLDivElement>(null);
@@ -77,11 +124,20 @@ export default function FloatingSearchBox() {
 
     params.set("person", String(person));
 
+    // 🆕 تسک ۱۲: اگر همین الان داخل یک دسته‌بندی خاص هستیم، جست‌وجوی جدید هم در همان
+    // دسته‌بندی باقی می‌ماند (کاربر از دسته‌بندی «کلبه» بیرون نمی‌رود، فقط فیلترهایش را عوض می‌کند).
+    if (category) params.set("category", category);
+
     router.push(`/search?${params.toString()}`);
   };
 
+  const wrapperClassName =
+    variant === "floating"
+      ? "relative z-20 container mx-auto px-4 -mt-24 md:-mt-20 mb-8 max-w-5xl"
+      : "container mx-auto px-4 mb-8 max-w-5xl";
+
   return (
-    <div className="relative z-20 container mx-auto px-4 -mt-24 md:-mt-20 mb-8 max-w-5xl">
+    <div className={wrapperClassName}>
       <div className="bg-white rounded-[2rem] shadow-2xl shadow-balkun-navy/10 border border-slate-100 p-4 md:p-6">
 
         <div className="flex flex-col md:flex-row items-center justify-between mb-4 bg-slate-50 md:bg-transparent rounded-2xl md:rounded-none p-2 md:p-0">

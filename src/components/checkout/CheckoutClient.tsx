@@ -1,3 +1,18 @@
+// مسیر: src/components/checkout/CheckoutClient.tsx
+// 🆕 تسک ۲۱: فیلد «کد ملی مهمان اصلی» طبق درخواست کارفرما حذف شد. این کد فقط در
+// دیتابیس خود بالکن ذخیره می‌شد و اصلاً به اتاقک ارسال نمی‌گردید؛ چون طبق نیاز
+// فعلی پروژه دیگر لازم نیست، کل بخش ورودی/اعتبارسنجی آن از فرم ثبت رزرو برداشته شد.
+//
+// 🆕 تسک ۱۷ چک‌لیست کارفرما (نمایش مبلغ رزرو زیر تاریخ اقامتگاه): تا قبل از این
+// تغییر، در ستون «خلاصه اقامتگاه» (سمت چپ صفحه‌ی تسویه‌حساب) فقط «تاریخ سفر» و
+// «نفرات» نمایش داده می‌شد و مبلغ نهایی رزرو فقط در ستون سمت راست («جزئیات
+// صورت‌حساب») دیده می‌شد. چون آن ستون در موبایل معمولاً پایین‌تر از باکس خلاصه
+// قرار می‌گیرد، کاربر برای دیدن مبلغ باید اسکرول می‌کرد و اطلاعات رزرو یک‌جا و
+// شفاف در دسترس نبود. برای رفع این مورد، یک ردیف جدید «مبلغ رزرو» دقیقاً زیر
+// ردیف «تاریخ سفر» در همین باکس خلاصه اضافه شد (با آیکن Receipt، هم‌الگو با
+// ردیف مشابه در BookingCard.tsx). این یک تغییر خالص UI است؛ مقدار از همان prop
+// موجود totalAmount خوانده می‌شود و هیچ محاسبه یا فراخوانی جدیدی لازم نبود.
+
 "use client";
 
 import { useState } from "react";
@@ -6,8 +21,7 @@ import Link from "next/link";
 import Image from "next/image";
 import { useAuthStore } from "@/store/authStore";
 import { formatPrice } from "@/utils/priceCalculator";
-import { isValidIranianNationalCode } from "@/utils/validateNationalCode";
-import { CalendarDays, Users, MapPin, CheckCircle2, ShieldCheck, ArrowRight, IdCard } from "lucide-react";
+import { CalendarDays, Users, MapPin, CheckCircle2, ShieldCheck, ArrowRight, Receipt } from "lucide-react";
 import type { BalkunRoomDetails } from "@/lib/otaghak/types";
 
 interface CheckoutClientProps {
@@ -33,7 +47,6 @@ export default function CheckoutClient({
   const { isAuthenticated, user } = useAuthStore();
   const [isLoading, setIsLoading] = useState(false);
   const [error, setError] = useState("");
-  const [nationalCode, setNationalCode] = useState("");
 
   const checkinDate = new Date(checkinUnix * 1000).toLocaleDateString("fa-IR");
   const checkoutDate = new Date(checkoutUnix * 1000).toLocaleDateString("fa-IR");
@@ -41,13 +54,6 @@ export default function CheckoutClient({
   const handleSubmit = async () => {
     if (!user) return;
     setError("");
-
-    // اعتبارسنجی کد ملی پیش از ارسال (فیدبک فوری به کاربر)
-    if (!isValidIranianNationalCode(nationalCode)) {
-      setError("لطفا کد ملی معتبر مهمان اصلی را وارد کنید");
-      return;
-    }
-
     setIsLoading(true);
 
     try {
@@ -60,7 +66,6 @@ export default function CheckoutClient({
           checkoutUnix,
           guests,
           userId: user.id,
-          nationalCode
         }),
       });
 
@@ -119,29 +124,6 @@ export default function CheckoutClient({
             <div className="flex flex-col gap-1">
               <span className="text-sm font-bold text-slate-700">{user.firstName} {user.lastName}</span>
               <span className="text-sm text-slate-500">{user.phoneNumber}</span>
-            </div>
-
-            <div className="w-full h-px bg-slate-100 my-1"></div>
-
-            <div className="flex flex-col gap-2">
-              <label htmlFor="nationalCode" className="text-sm font-bold text-slate-700 flex items-center gap-2">
-                <IdCard className="w-4 h-4 text-balkun-cyan" />
-                کد ملی مهمان اصلی
-              </label>
-              <input
-                id="nationalCode"
-                type="text"
-                inputMode="numeric"
-                maxLength={10}
-                value={nationalCode}
-                onChange={(e) => setNationalCode(e.target.value.replace(/\D/g, ""))}
-                placeholder="مثال: 0012345678"
-                className="w-full bg-slate-50 border border-slate-200 rounded-xl px-4 py-3 text-sm font-bold text-slate-800 outline-none focus:border-balkun-cyan transition-colors"
-                dir="ltr"
-              />
-              <span className="text-xs text-slate-400 font-medium">
-                این اطلاعات صرفاً برای ثبت رزرو نزد اتاقک استفاده می‌شود و محرمانه باقی می‌ماند.
-              </span>
             </div>
           </div>
 
@@ -221,6 +203,19 @@ export default function CheckoutClient({
                 <div className="flex flex-col">
                   <span className="text-[10px] font-bold text-slate-400">تاریخ سفر</span>
                   <span className="text-sm font-bold text-slate-700 mt-1">{checkinDate} تا {checkoutDate}</span>
+                </div>
+              </div>
+
+              {/* 🆕 تسک ۱۷ — مبلغ رزرو دقیقاً زیر تاریخ اقامتگاه نمایش داده می‌شود */}
+              <div className="flex items-start gap-3">
+                <div className="p-2 bg-white rounded-xl border border-slate-100 shrink-0">
+                  <Receipt className="w-5 h-5 text-balkun-cyan" />
+                </div>
+                <div className="flex flex-col">
+                  <span className="text-[10px] font-bold text-slate-400">مبلغ رزرو</span>
+                  <span className="text-sm font-black text-balkun-cyan mt-1">
+                    {formatPrice(totalAmount)} <span className="text-[10px] font-bold text-slate-500">تومان</span>
+                  </span>
                 </div>
               </div>
 

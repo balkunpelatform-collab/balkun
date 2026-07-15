@@ -7,6 +7,11 @@
 // بدون رفت‌وبرگشت اضافه به دیتابیس، در همان لبه (Edge) کنترل کند. بررسی نهایی و معتبرِ نقش
 // برای عملیات حساس ادمین، همیشه در خودِ Route Handler از روی دیتابیس دوباره انجام می‌شود
 // (به فایل src/lib/auth/adminAuth.ts نگاه کن) — یعنی توکن فقط برای تجربه کاربری سریع است، نه تنها خط دفاعی.
+//
+// 🆕 تسک ۱ (تاریخچه کیف پول برای مالی و مدیر ارشد): نقش FINANCE_MANAGER به مقادیر
+// مجاز role در verifySessionToken اضافه شد. این تغییر حیاتی است — بدون آن، توکن هر
+// کاربری که نقشش FINANCE_MANAGER باشد نامعتبر تشخیص داده می‌شد و عملاً از کل سایت
+// (نه فقط پنل ادمین) بیرون می‌ماند.
 
 import { SignJWT, jwtVerify, type JWTPayload } from "jose";
 import type { UserType, UserRole } from "@/types/database";
@@ -57,7 +62,10 @@ export async function verifySessionToken(
       typeof payload.userId === "string" &&
       typeof payload.phoneNumber === "string" &&
       (payload.userType === "NORMAL" || payload.userType === "ORGANIZATIONAL") &&
-      (payload.role === "USER" || payload.role === "SUPPORT_AGENT" || payload.role === "SUPER_ADMIN")
+      (payload.role === "USER" ||
+        payload.role === "SUPPORT_AGENT" ||
+        payload.role === "FINANCE_MANAGER" ||
+        payload.role === "SUPER_ADMIN")
     ) {
       return payload as BalkunSessionPayload;
     }

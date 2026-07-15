@@ -1,4 +1,23 @@
 // مسیر: src/components/profile/BookingCard.tsx
+//
+// 🔧 اصلاح باگ تسک ۷ چک‌لیست کارفرما (تفکیک کیف پول سازمانی + شارژ خودکار + غیرفعال‌سازی سازمان):
+// این فایل قبلاً موجودی «کیف پول سازمانی» را از فیلد قدیمی wallet.orgBalance می‌خواند.
+// طبق طراحی جدید تسک ۷ (نگاه کنید به src/lib/wallet/ensureOrganization.ts و
+// src/app/api/user/wallet/route.ts)، ستون wallets.orgBalance دیگر استفاده نمی‌شود و همیشه
+// ۰ است؛ موجودی واقعی و مشترک سازمان از این پس فقط در organizations.walletBalance نگه
+// داشته می‌شود و روت GET /api/user/wallet آن را در فیلد جداگانه‌ی «organization» برمی‌گرداند.
+//
+// نتیجه‌ی این باگ قبل از اصلاح: در مودال «پرداخت از کیف پول»، گزینه‌ی «کیف پول سازمانی»
+// همیشه موجودی ۰ تومان نشان می‌داد و دکمه‌ی «تایید و پرداخت» برای آن همیشه غیرفعال بود —
+// یعنی کاربران سازمانی عملاً هیچ‌وقت نمی‌توانستند از کیف پول مشترک سازمان‌شان برای پرداخت
+// رزرو استفاده کنند، حتی اگر موجودی سازمان کافی بود (چون خودِ Route Handler پرداخت،
+// src/app/api/user/bookings/[id]/pay-with-wallet/route.ts، درست پیاده‌سازی شده بود).
+//
+// اصلاح: موجودی سازمانی حالا از data.organization.walletBalance خوانده می‌شود، نه
+// data.wallet.orgBalance. همچنین وضعیت فعال/غیرفعال بودن سازمان (organization.isActive)
+// هم در نظر گرفته می‌شود: اگر سازمان غیرفعال شده باشد، گزینه‌ی کیف پول سازمانی با پیام
+// روشن «غیرفعال شده» نمایش داده می‌شود (نه فقط «کافی نیست»)، و انتخاب/پرداخت از آن مسدود
+// می‌شود — دقیقاً همان رفتاری که در Route Handler پرداخت هم اعمال شده.
 
 "use client";
 
@@ -24,6 +43,12 @@ const STATUS_MAP: Record<string, { label: string; color: string; bg: string }> =
 // 🆕 تسک ۲ (۲۰۲۶/۰۷/۱۱) — پرداخت مستقیم رزرو از موجودی کیف پول
 type WalletBalances = { normalBalance: number; orgBalance: number };
 
+// 🔧 اصلاح تسک ۷: اطلاعات کیف پول مشترک سازمان (از فیلد organization در پاسخ /api/user/wallet)
+interface OrganizationWalletInfo {
+  isActive: boolean;
+  walletBalance: number;
+}
+
 export default function BookingCard({ booking }: { booking: Booking }) {
   const router = useRouter();
   const { user } = useAuthStore();
@@ -34,6 +59,8 @@ export default function BookingCard({ booking }: { booking: Booking }) {
   const [isWalletLoading, setIsWalletLoading] = useState(false);
   const [walletError, setWalletError] = useState("");
   const [walletBalances, setWalletBalances] = useState<WalletBalances | null>(null);
+  // 🔧 اصلاح تسک ۷: وضعیت واقعی سازمان (فعال/غیرفعال) کنار موجودی نگه داشته می‌شود
+  const [organizationInfo, setOrganizationInfo] = useState<OrganizationWalletInfo | null>(null);
   const [selectedWalletType, setSelectedWalletType] = useState<"NORMAL" | "ORGANIZATIONAL">("NORMAL");
   const [isPayingWithWallet, setIsPayingWithWallet] = useState(false);
 
@@ -76,23 +103,30 @@ export default function BookingCard({ booking }: { booking: Booking }) {
   };
 
   // 🆕 تسک ۲ — باز کردن مودال پرداخت از کیف پول و دریافت موجودی به‌روز
+  // 🔧 اصلاح تسک ۷: موجودی سازمانی از data.organization.walletBalance خوانده می‌شود،
+  // نه از data.wallet.orgBalance (که همیشه ۰ است). وضعیت فعال/غیرفعال سازمان هم ذخیره می‌شود.
   const openWalletModal = async () => {
     setIsWalletModalOpen(true);
     setWalletError("");
     setWalletBalances(null);
-    setSelectedWalletType(isOrganizational ? "ORGANIZATIONAL" : "NORMAL");
+    setOrganizationInfo(null);
+    setSelectedWalletType("NORMAL");
     setIsWalletLoading(true);
     try {
       const res = await fetch("/api/user/wallet");
       const data = await res.json();
       if (data.success && data.wallet) {
+        const orgInfo: OrganizationWalletInfo | null = data.organization
+          ? { isActive: Boolean(data.organization.isActive), walletBalance: Number(data.organization.walletBalance) }
+          : null;
         const balances: WalletBalances = {
           normalBalance: Number(data.wallet.normalBalance),
-          orgBalance: Number(data.wallet.orgBalance),
+          orgBalance: orgInfo ? orgInfo.walletBalance : 0,
         };
+        setOrganizationInfo(orgInfo);
         setWalletBalances(balances);
-        // پیش‌فرض هوشمند: اگر کاربر سازمانی است و موجودی سازمانی کافی دارد، همان انتخاب شود
-        if (isOrganizational && balances.orgBalance >= booking.totalPaidAmount) {
+        // پیش‌فرض هوشمند: اگر کاربر سازمانی است، سازمانش فعال است و موجودی سازمانی کافی دارد، همان انتخاب شود
+        if (isOrganizational && orgInfo?.isActive && balances.orgBalance >= booking.totalPaidAmount) {
           setSelectedWalletType("ORGANIZATIONAL");
         } else {
           setSelectedWalletType("NORMAL");
@@ -153,7 +187,12 @@ export default function BookingCard({ booking }: { booking: Booking }) {
   const selectedBalance = walletBalances
     ? (selectedWalletType === "ORGANIZATIONAL" ? walletBalances.orgBalance : walletBalances.normalBalance)
     : 0;
-  const hasEnoughBalance = walletBalances ? selectedBalance >= booking.totalPaidAmount : false;
+  // 🔧 اصلاح تسک ۷: اگر کیف پول سازمانی انتخاب شده، علاوه بر کافی‌بودن موجودی، سازمان هم باید فعال باشد
+  const hasEnoughBalance = walletBalances
+    ? selectedWalletType === "ORGANIZATIONAL"
+      ? Boolean(organizationInfo?.isActive) && selectedBalance >= booking.totalPaidAmount
+      : selectedBalance >= booking.totalPaidAmount
+    : false;
 
   return (
     <div className="border border-slate-100 rounded-2xl p-4 md:p-5 hover:border-balkun-cyan/30 transition-colors shadow-sm flex flex-col gap-4">
@@ -215,29 +254,58 @@ export default function BookingCard({ booking }: { booking: Booking }) {
                       )}
                     </button>
 
+                    {/* 🔧 اصلاح تسک ۷: گزینه‌ی کیف پول سازمانی حالا موجودی واقعی مشترک سازمان
+                        (organization.walletBalance) را نشان می‌دهد، نه فیلد قدیمی و همیشه-صفرِ
+                        wallet.orgBalance. اگر سازمان غیرفعال باشد یا هنوز در سیستم ثبت نشده باشد،
+                        پیام روشن مربوطه نشان داده می‌شود و امکان انتخاب/پرداخت مسدود می‌ماند. */}
                     {isOrganizational && (
                       <button
-                        onClick={() => setSelectedWalletType("ORGANIZATIONAL")}
-                        disabled={isPayingWithWallet}
+                        onClick={() => {
+                          if (isPayingWithWallet) return;
+                          if (!organizationInfo?.isActive) return;
+                          setSelectedWalletType("ORGANIZATIONAL");
+                        }}
+                        disabled={isPayingWithWallet || !organizationInfo?.isActive}
                         className={`w-full text-right rounded-xl border-2 p-3.5 transition-colors flex items-center justify-between gap-3 ${
                           selectedWalletType === "ORGANIZATIONAL" ? "border-balkun-orange bg-balkun-orange/5" : "border-slate-100"
-                        } ${walletBalances.orgBalance < booking.totalPaidAmount ? "opacity-60" : ""}`}
+                        } ${
+                          !organizationInfo?.isActive || walletBalances.orgBalance < booking.totalPaidAmount
+                            ? "opacity-60"
+                            : ""
+                        }`}
                       >
                         <div className="flex flex-col items-start gap-0.5">
                           <span className="text-xs font-black text-slate-700">کیف پول سازمانی</span>
                           <span className="text-[10px] font-bold text-slate-400">
-                            موجودی: {formatPrice(walletBalances.orgBalance)} تومان
+                            {organizationInfo
+                              ? `موجودی مشترک سازمان: ${formatPrice(walletBalances.orgBalance)} تومان`
+                              : "سازمان شما هنوز در سیستم کیف پول ثبت نشده است"}
                           </span>
                         </div>
-                        {walletBalances.orgBalance < booking.totalPaidAmount && (
-                          <span className="text-[10px] font-bold text-red-500 shrink-0">کافی نیست</span>
+                        {!organizationInfo ? null : !organizationInfo.isActive ? (
+                          <span className="text-[10px] font-bold text-red-500 shrink-0">غیرفعال شده</span>
+                        ) : (
+                          walletBalances.orgBalance < booking.totalPaidAmount && (
+                            <span className="text-[10px] font-bold text-red-500 shrink-0">کافی نیست</span>
+                          )
                         )}
                       </button>
                     )}
                   </div>
                 )}
 
-                {!hasEnoughBalance && walletBalances && (
+                {/* 🔧 اصلاح تسک ۷: پیام راهنمای اختصاصی وقتی سازمان غیرفعال است */}
+                {isOrganizational && selectedWalletType === "ORGANIZATIONAL" && organizationInfo && !organizationInfo.isActive && (
+                  <div className="bg-red-50 border border-red-100 rounded-xl p-3 flex gap-2.5">
+                    <AlertTriangle className="w-4 h-4 text-red-500 shrink-0 mt-0.5" />
+                    <p className="text-[11px] font-bold text-red-600 leading-relaxed">
+                      سازمان شما توسط مدیریت بالکن غیرفعال شده و امکان استفاده از کیف پول سازمانی وجود ندارد.
+                      لطفاً از کیف پول عادی یا پرداخت آنلاین استفاده کنید.
+                    </p>
+                  </div>
+                )}
+
+                {!hasEnoughBalance && walletBalances && !(isOrganizational && selectedWalletType === "ORGANIZATIONAL" && organizationInfo && !organizationInfo.isActive) && (
                   <div className="bg-balkun-yellow/10 border border-balkun-yellow/20 rounded-xl p-3 flex gap-2.5">
                     <AlertTriangle className="w-4 h-4 text-balkun-yellow shrink-0 mt-0.5" />
                     <p className="text-[11px] font-bold text-slate-600 leading-relaxed">
@@ -260,7 +328,7 @@ export default function BookingCard({ booking }: { booking: Booking }) {
                   {isPayingWithWallet ? <Loader2 className="w-5 h-5 animate-spin" /> : "تایید و پرداخت از کیف پول"}
                 </button>
 
-                {!hasEnoughBalance && (
+                {!hasEnoughBalance && selectedWalletType === "NORMAL" && (
                   <Link
                     href="/profile?tab=wallet"
                     className="text-center text-[11px] font-bold text-balkun-cyan hover:underline -mt-1"
@@ -284,11 +352,11 @@ export default function BookingCard({ booking }: { booking: Booking }) {
           </h3>
           <span className="text-xs text-slate-400 font-bold" dir="ltr">ID: {booking.id.split('-')[0].toUpperCase()}</span>
         </div>
-        
+
         {/* دکمه‌های اکشن */}
         <div className="flex flex-wrap items-center gap-2 w-full md:w-auto">
           {booking.status === "WAITING_FOR_PAYMENT" && (
-            <button 
+            <button
               onClick={handlePayment}
               disabled={isProcessing}
               className="flex-1 md:flex-none bg-balkun-orange text-white text-xs font-bold px-4 py-2.5 rounded-xl shadow-md shadow-balkun-orange/20 hover:-translate-y-0.5 transition-transform flex items-center justify-center gap-2 disabled:opacity-50"
@@ -309,7 +377,7 @@ export default function BookingCard({ booking }: { booking: Booking }) {
           )}
 
           {booking.status === "PAID_CONFIRMED" && (
-            <Link 
+            <Link
               href={`/voucher/${booking.id}`}
               target="_blank"
               className="flex-1 md:flex-none bg-balkun-cyan text-white text-xs font-bold px-4 py-2.5 rounded-xl shadow-md shadow-balkun-cyan/20 hover:-translate-y-0.5 transition-transform flex items-center justify-center gap-2"
@@ -320,7 +388,7 @@ export default function BookingCard({ booking }: { booking: Booking }) {
 
           {/* امکان لغو برای رزروهای در انتظار پرداخت: همیشه و بدون محدودیت زمانی مجاز است */}
           {booking.status === "WAITING_FOR_PAYMENT" && (
-            <button 
+            <button
               onClick={handleCancel}
               disabled={isProcessing}
               className="flex-1 md:flex-none bg-slate-100 text-slate-500 hover:bg-red-50 hover:text-red-500 text-xs font-bold px-4 py-2.5 rounded-xl transition-colors flex items-center justify-center gap-1.5 disabled:opacity-50"
@@ -339,7 +407,7 @@ export default function BookingCard({ booking }: { booking: Booking }) {
                 <Lock className="w-3.5 h-3.5" /> مهلت لغو رایگان تمام شده
               </span>
             ) : (
-              <button 
+              <button
                 onClick={handleCancel}
                 disabled={isProcessing}
                 className="flex-1 md:flex-none bg-slate-100 text-slate-500 hover:bg-red-50 hover:text-red-500 text-xs font-bold px-4 py-2.5 rounded-xl transition-colors flex items-center justify-center gap-1.5 disabled:opacity-50"

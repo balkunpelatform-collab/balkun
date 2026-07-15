@@ -19,11 +19,15 @@
 // دسترسی دارد — نه فقط SUPER_ADMIN. توجه: PATCH شامل بازگشت خودکار وجه به کیف‌پول
 // مسافر است و DELETE یک عملیات دائمی و غیرقابل بازگشت است؛ هر دو همچنان در
 // admin_audit_logs با شناسه‌ی همان ادمین پشتیبان ثبت می‌شوند تا در صورت نیاز قابل پیگیری باشند.
+//
+// 🆕 تسک ۱۵ چک‌لیست کارفرما (نمایش زنگوله‌ی هدر واقعی): بعد از لغو رزرو توسط ادمین/میزبان،
+// علاوه بر پیامک، یک اعلان درون‌برنامه‌ای هم برای مسافر ثبت می‌شود.
 
 import { NextRequest, NextResponse } from "next/server";
 import { supabaseAdmin } from "@/lib/supabase-admin";
 import { requireAdminTabAccess, logAdminAction } from "@/lib/auth/adminAuth";
 import { sendBookingCancelledSms, sendRefundSms } from "@/lib/sms/smsService";
+import { createNotification } from "@/lib/notifications/notificationService";
 import { formatPrice } from "@/utils/priceCalculator";
 
 interface RouteContext {
@@ -135,6 +139,17 @@ export async function PATCH(request: NextRequest, { params }: RouteContext) {
           await sendRefundSms(guestUser.phoneNumber, guestUser.firstName, formatPrice(booking.totalPaidAmount));
         }
       }
+
+      // 🆕 تسک ۱۵ چک‌لیست کارفرما — ثبت اعلان درون‌برنامه‌ای لغو رزرو توسط میزبان (زنگوله‌ی هدر)
+      await createNotification({
+        userId: booking.userId,
+        type: "BOOKING_CANCELLED",
+        title: "رزرو شما لغو شد",
+        message: wasPaidConfirmed
+          ? `متاسفانه رزرو «${booking.roomName}» توسط میزبان لغو شد. مبلغ پرداختی به کیف پول شما بازگردانده شد.`
+          : `متاسفانه رزرو «${booking.roomName}» توسط میزبان لغو شد.`,
+        linkUrl: "/profile?tab=bookings",
+      });
     } catch (smsError) {
       console.error("Admin Booking Cancel SMS Error (non-blocking):", smsError);
     }

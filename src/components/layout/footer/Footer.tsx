@@ -1,3 +1,17 @@
+// مسیر: src/components/layout/footer/Footer.tsx
+// این فایل را به‌طور کامل جایگزین فایل فعلی کنید
+// 🆕 تسک ۱۶: شماره تلفن بالکن اکنون قابل کلیک است — با کلیک روی آن (به‌خصوص
+// روی موبایل)، اپلیکیشن تماس گوشی مستقیماً باز می‌شود (لینک tel:).
+// مقدار COMPANY_INFO.phone از قبل فقط رقم است (بدون فاصله/خط‌تیره)، پس همان
+// مقدار مستقیماً در href="tel:..." استفاده شده است.
+//
+// 🐛→✅ تسک ۲۴: رفع باگ صدور ووچر PDF از صفحه سایت
+// ریشه‌ی باگ: صفحه‌ی ووچر داخل Layout اصلی سایت رندر می‌شود، پس فوتر همیشه
+// پایین صفحه‌ی ووچر هم هست. دقیقاً همین باکس «دسترسی سریع» (شامل لینک‌های
+// «درباره ما» و «قوانین و مقررات») و بقیه‌ی بخش‌های فوتر بودند که در PDF/برگه‌ی
+// چاپ‌شده‌ی ووچر ظاهر می‌شدند، چون تگ <footer> کلاس print:hidden نداشت.
+// با اضافه شدن print:hidden، فوتر هنگام چاپ کاملاً از خروجی حذف می‌شود.
+
 import Link from "next/link";
 import Image from "next/image";
 import { COMPANY_INFO } from "@/constants/company";
@@ -6,7 +20,7 @@ import { MapPin, Phone, Mail, ArrowUpLeft, Code2 } from "lucide-react";
 
 export default function Footer() {
   return (
-    <footer className="relative bg-[#030712] text-slate-300 pt-16 pb-28 md:pb-12 mt-24 overflow-hidden rounded-t-[2.5rem] md:rounded-t-[4rem] shadow-[0_-15px_50px_rgba(0,0,0,0.3)] border-t border-white/[0.02]">
+    <footer className="print:hidden relative bg-[#030712] text-slate-300 pt-16 pb-28 md:pb-12 mt-24 overflow-hidden rounded-t-[2.5rem] md:rounded-t-[4rem] shadow-[0_-15px_50px_rgba(0,0,0,0.3)] border-t border-white/[0.02]">
       
       {/* Subtle top glow line - matching the cyan vibe */}
       <div className="absolute top-0 left-0 right-0 h-[2px] bg-gradient-to-r from-transparent via-balkun-cyan/40 to-transparent z-10"></div>
@@ -88,12 +102,19 @@ export default function Footer() {
                 <span className="leading-relaxed font-medium text-sm text-slate-400 mt-1">{COMPANY_INFO.address}</span>
               </div>
 
-              <div className="flex items-center gap-4 group/item">
+              {/* 🆕 تسک ۱۶: شماره تلفن اکنون یک لینک tel: است تا با کلیک/لمس، مستقیم تماس گرفته شود */}
+              <a
+                href={`tel:${COMPANY_INFO.phone}`}
+                className="flex items-center gap-4 group/item"
+                aria-label={`تماس با بالکن: ${COMPANY_INFO.phone}`}
+              >
                 <div className="p-3 bg-white/[0.03] rounded-2xl border border-white/5 group-hover/item:border-balkun-orange/30 group-hover/item:bg-balkun-orange/10 transition-colors">
                   <Phone className="w-5 h-5 text-slate-400 group-hover/item:text-balkun-orange transition-colors" />
                 </div>
-                <span className="font-black text-white tracking-widest text-lg">{COMPANY_INFO.phone}</span>
-              </div>
+                <span dir="ltr" className="font-black text-white tracking-widest text-lg group-hover/item:text-balkun-orange transition-colors">
+                  {COMPANY_INFO.phone}
+                </span>
+              </a>
 
               <div className="flex items-center gap-4 group/item">
                 <div className="p-3 bg-white/[0.03] rounded-2xl border border-white/5 group-hover/item:border-balkun-yellow/30 group-hover/item:bg-balkun-yellow/10 transition-colors">

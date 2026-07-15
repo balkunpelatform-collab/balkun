@@ -129,3 +129,26 @@ export async function sendRefundSms(
 
   console.warn("⚠️ ارسال پیامک عودت وجه نادیده گرفته شد (پنل پیامکی واقعی هنوز وصل نشده).");
 }
+
+/**
+ * 🆕 تسک ۹ چک‌لیست کارفرما: ارسال پیامک اطلاع‌رسانی به کاربر، وقتی ادمین/پشتیبان
+ * به تیکت پشتیبانی او پاسخ می‌دهد (یعنی وضعیت تیکت به ANSWERED تغییر می‌کند).
+ * دقیقاً از src/app/api/admin/tickets/[id]/route.ts (POST) فراخوانی می‌شود،
+ * بلافاصله بعد از ثبت موفق پیام پاسخ و بعد از ثبت لاگ ممیزی.
+ * مثل بقیه‌ی پیامک‌های غیر-OTP، در حالت غیر Mock هم غیرحیاتی است و نباید
+ * جریان اصلی پاسخ‌دهی به تیکت را مختل کند.
+ */
+export async function sendTicketReplySms(
+  phoneNumber: string,
+  firstName: string,
+  ticketSubject: string
+): Promise<void> {
+  const message = `${firstName} عزیز، تیکت پشتیبانی شما با موضوع «${ticketSubject}» پاسخ داده شد. برای مشاهده‌ی پاسخ به بخش «پشتیبانی» در پروفایل بالکن مراجعه کنید.`;
+
+  if (SMS_CONFIG.useMock) {
+    console.log(`[Balkun MOCK SMS - Ticket Reply] به ${phoneNumber}: ${message}`);
+    return;
+  }
+
+  console.warn("⚠️ ارسال پیامک پاسخ تیکت نادیده گرفته شد (پنل پیامکی واقعی هنوز وصل نشده).");
+}

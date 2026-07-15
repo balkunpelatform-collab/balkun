@@ -4,10 +4,24 @@
 // چون ادمین باید به تیکت تمام کاربران دسترسی داشته باشد.
 // 🆕 فاز ۱۱ / بخش ۳: هر سه تابع حالا از طریق requireAdminTabAccess با کلید "tickets"
 // کنترل می‌شوند؛ SUPER_ADMIN بدون قیدوشرط و SUPPORT_AGENT فقط با داشتن این دسترسی وارد می‌شود.
+// 🆕 تسک ۲ چک‌لیست کارفرما (نمایش لاگ فعالیت‌های پشتیبانی/مالی/مدیر ارشد): پاسخ‌دهی
+// (POST) و بستن تیکت (PATCH) حالا به‌صورت اجباری در admin_audit_logs ثبت می‌شوند
+// (actionType های TICKET_REPLY و TICKET_STATUS_CHANGE) تا در صفحه‌ی جدید
+// «لاگ فعالیت‌ها» (`/admin/activity-log`) هر پشتیبان بتواند تاریخچه‌ی کار خودش را ببیند
+// و مدیر ارشد بتواند فعالیت همه‌ی تیم را رصد کند.
+// 🆕 تسک ۹ چک‌لیست کارفرما: بلافاصله بعد از ثبت موفق پاسخ ادمین (POST)، برای کاربر
+// صاحب تیکت پیامک اطلاع‌رسانی ارسال می‌شود (sendTicketReplySms). این ارسال دقیقاً مثل
+// بقیه‌ی پیامک‌های غیر-OTP در پروژه (تایید رزرو، لغو رزرو و ...) غیرحیاتی است: اگر شماره
+// موبایل کاربر در دسترس نباشد یا ارسال با خطا مواجه شود، پاسخ‌دهی به تیکت (که خودش
+// موفق بوده) هرگز شکست نمی‌خورد و فقط خطا در کنسول سرور لاگ می‌شود.
+// 🆕 تسک ۱۵ چک‌لیست کارفرما (نمایش زنگوله‌ی هدر واقعی): در همان try/catch، یک اعلان
+// درون‌برنامه‌ای هم برای کاربر ثبت می‌شود تا با کلیک روی آن مستقیم به همین تیکت برود.
 
 import { NextRequest, NextResponse } from "next/server";
 import { supabaseAdmin } from "@/lib/supabase-admin";
-import { requireAdminTabAccess } from "@/lib/auth/adminAuth";
+import { requireAdminTabAccess, logAdminAction } from "@/lib/auth/adminAuth";
+import { sendTicketReplySms } from "@/lib/sms/smsService";
+import { createNotification } from "@/lib/notifications/notificationService";
 
 interface RouteContext {
   params: Promise<{ id: string }>;
@@ -66,7 +80,7 @@ export async function POST(request: NextRequest, { params }: RouteContext) {
 
   const { data: existingTicket, error: fetchError } = await supabaseAdmin
     .from("tickets")
-    .select("id")
+    .select("id, userId, subject, status")
     .eq("id", ticketId)
     .maybeSingle();
 
@@ -97,6 +111,46 @@ export async function POST(request: NextRequest, { params }: RouteContext) {
     return NextResponse.json({ success: false, error: "خطا در به‌روزرسانی وضعیت تیکت" }, { status: 500 });
   }
 
+  // 🆕 ثبت اجباری در لاگ ممیزی (تسک ۲ چک‌لیست کارفرما) — مشخص می‌کند چه کسی،
+  // به کدام تیکت (و کدام کاربر) پاسخ داده و نتیجه (تغییر وضعیت به ANSWERED) چه بوده.
+  await logAdminAction({
+    adminId: admin.userId,
+    actionType: "TICKET_REPLY",
+    targetUserId: existingTicket.userId,
+    description: `پاسخ به تیکت «${existingTicket.subject}» (شناسه تیکت: ${ticketId}) توسط ادمین.`,
+    previousValue: existingTicket.status,
+    newValue: "ANSWERED",
+  });
+
+  // 🆕 تسک ۹ چک‌لیست کارفرما: ارسال پیامک اطلاع‌رسانی به کاربر صاحب تیکت.
+  // عمداً بعد از پاسخ موفق قرار گرفته و در try/catch جدا پیچیده شده تا در هیچ
+  // شرایطی (شماره موبایل نامعتبر، خطای پنل پیامکی و ...) پاسخ ثبت‌شده‌ی ادمین
+  // را بی‌اثر نکند یا باعث خطای ۵۰۰ به کاربر پنل ادمین نشود.
+  try {
+    const { data: ticketOwner } = await supabaseAdmin
+      .from("users")
+      .select("firstName, phoneNumber")
+      .eq("id", existingTicket.userId)
+      .maybeSingle();
+
+    if (ticketOwner?.phoneNumber) {
+      await sendTicketReplySms(ticketOwner.phoneNumber, ticketOwner.firstName ?? "", existingTicket.subject);
+    }
+
+    // 🆕 تسک ۱۵ چک‌لیست کارفرما — ثبت اعلان درون‌برنامه‌ای پاسخ پشتیبانی (زنگوله‌ی هدر).
+    // linkUrl مستقیماً کاربر را به همین تیکت در صفحه‌ی پشتیبانی (که مقدار را از
+    // پارامتر ?ticket= می‌خواند — نگاه کن به src/components/support/SupportClient.tsx) می‌برد.
+    await createNotification({
+      userId: existingTicket.userId,
+      type: "TICKET_REPLIED",
+      title: "پاسخ جدید از پشتیبانی بالکن",
+      message: `پشتیبانی به تیکت «${existingTicket.subject}» شما پاسخ داد.`,
+      linkUrl: `/support?ticket=${ticketId}`,
+    });
+  } catch (smsError) {
+    console.error("Ticket Reply SMS Error:", smsError);
+  }
+
   return NextResponse.json({ success: true, message: newMessage, ticket: updatedTicket });
 }
 
@@ -108,6 +162,12 @@ export async function PATCH(request: NextRequest, { params }: RouteContext) {
   }
 
   const { id: ticketId } = await params;
+
+  const { data: ticketBeforeClose } = await supabaseAdmin
+    .from("tickets")
+    .select("id, userId, subject, status")
+    .eq("id", ticketId)
+    .maybeSingle();
 
   const { data: updatedTicket, error } = await supabaseAdmin
     .from("tickets")
@@ -123,6 +183,16 @@ export async function PATCH(request: NextRequest, { params }: RouteContext) {
   if (!updatedTicket) {
     return NextResponse.json({ success: false, error: "تیکت یافت نشد" }, { status: 404 });
   }
+
+  // 🆕 ثبت اجباری در لاگ ممیزی (تسک ۲ چک‌لیست کارفرما)
+  await logAdminAction({
+    adminId: admin.userId,
+    actionType: "TICKET_STATUS_CHANGE",
+    targetUserId: ticketBeforeClose?.userId ?? null,
+    description: `بستن تیکت «${ticketBeforeClose?.subject ?? ""}» (شناسه تیکت: ${ticketId}) توسط ادمین.`,
+    previousValue: ticketBeforeClose?.status ?? null,
+    newValue: "CLOSED",
+  });
 
   return NextResponse.json({ success: true, ticket: updatedTicket });
 }

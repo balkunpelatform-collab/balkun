@@ -1,8 +1,19 @@
+// مسیر: src/app/api/auth/register/route.ts
+//
+// 🆕 تسک ۷ چک‌لیست کارفرما (تفکیک کیف پول سازمانی + شارژ خودکار + غیرفعال‌سازی سازمان):
+// وقتی کاربری با شماره‌ی موجود در لیست سفید سازمانی ثبت‌نام می‌کند، علاوه بر ساخت
+// کیف پول شخصی‌اش، حالا مطمئن می‌شویم که یک ردیف سازمان هم برای organizationName او
+// در جدول جدید `organizations` وجود دارد (ensureOrganizationExists — idempotent است،
+// اگر از قبل وجود داشته باشد کاری انجام نمی‌دهد). بدون این کار، سازمان‌هایی که فقط
+// از طریق ثبت‌نام کاربر شناخته می‌شوند (نه از طریق افزودن دستی شماره در پنل ادمین)
+// در تب «کیف پول‌های سازمانی» پنل ادمین دیده نمی‌شدند.
+
 import { NextResponse } from "next/server";
 import { supabaseAdmin } from "@/lib/supabase-admin";
 import { isOtpValid, consumeOtp } from "@/lib/otp/otpService";
 import { sendWelcomeSms } from "@/lib/sms/smsService";
 import { createSessionToken, SESSION_COOKIE } from "@/lib/auth/session";
+import { ensureOrganizationExists } from "@/lib/wallet/ensureOrganization";
 
 export async function POST(request: Request) {
   try {
@@ -49,12 +60,17 @@ export async function POST(request: Request) {
 
     if (userError) throw userError;
 
-    // ۵. ساخت اتوماتیک کیف پول برای این کاربر
+    // ۵. ساخت اتوماتیک کیف پول شخصی برای این کاربر
     const { error: walletError } = await supabaseAdmin
       .from("wallets")
       .insert([{ userId: newUser.id }]);
 
     if (walletError) throw walletError;
+
+    // 🆕 ۵.۵ تسک ۷: تضمین وجود ردیف سازمان (برای کیف پول مشترک سازمانی)
+    if (organizationName) {
+      await ensureOrganizationExists(organizationName);
+    }
 
     // ۶. کد تایید را مصرف‌شده علامت می‌زنیم
     await consumeOtp(phoneNumber, otp);
