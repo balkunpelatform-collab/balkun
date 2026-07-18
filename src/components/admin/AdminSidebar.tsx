@@ -85,6 +85,7 @@ import {
   FileEdit,
   Scale,
   MessageSquare,
+  RefreshCw,
   type LucideIcon,
 } from "lucide-react";
 import { useAuthStore } from "@/store/authStore";
@@ -116,6 +117,7 @@ export const ADMIN_NAV: AdminNavItem[] = [
   { id: "corporate", label: "سازمانی", href: "/admin/corporate", icon: Building2, roles: ["SUPER_ADMIN", "SUPPORT_AGENT", "FINANCE_MANAGER"], tabKey: "corporate" },
   { id: "tickets", label: "مرکز تیکتینگ", href: "/admin/tickets", icon: HeadphonesIcon, roles: ["SUPER_ADMIN", "SUPPORT_AGENT"], tabKey: "tickets" },
   { id: "logs", label: "لاگ‌های سیستم", href: "/admin/logs", icon: ScrollText, roles: ["SUPER_ADMIN", "SUPPORT_AGENT", "FINANCE_MANAGER"], tabKey: "logs" },
+  { id: "cache", label: "پاک‌سازی کش سایت", href: "/admin/cache", icon: RefreshCw, roles: ["SUPER_ADMIN"] },
 ];
 
 export default function AdminSidebar({ onClose }: { onClose?: () => void }) {

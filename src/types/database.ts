@@ -273,6 +273,7 @@ export type AdminActionType =
   | "SITE_CONTENT_CHANGE"
   | "USER_DELETE"
   | "TICKET_DELETE"
+  | "CACHE_CLEAR"
   | "OTHER";
 
 export interface AdminAuditLog {

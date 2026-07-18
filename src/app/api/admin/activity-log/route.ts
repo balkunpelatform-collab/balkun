@@ -52,6 +52,7 @@ const VALID_ACTION_TYPES: AdminActionType[] = [
   "SITE_CONTENT_CHANGE",
   "USER_DELETE",
   "TICKET_DELETE",
+  "CACHE_CLEAR",
   "OTHER",
 ];
 

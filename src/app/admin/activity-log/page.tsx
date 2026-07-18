@@ -42,6 +42,7 @@ type AdminActionType =
   | "SITE_CONTENT_CHANGE"
   | "USER_DELETE"
   | "TICKET_DELETE"
+  | "CACHE_CLEAR"
   | "OTHER";
 
 const ACTION_LABELS: Record<AdminActionType, string> = {
@@ -61,6 +62,7 @@ const ACTION_LABELS: Record<AdminActionType, string> = {
   SITE_CONTENT_CHANGE: "ویرایش محتوای سایت",
   USER_DELETE: "حذف کاربر",
   TICKET_DELETE: "حذف تیکت",
+  CACHE_CLEAR: "پاک‌سازی کش سایت",
   OTHER: "سایر موارد",
 };
 
