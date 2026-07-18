@@ -11,11 +11,31 @@
 //
 // 🆕 اصلاح مورد ۱ (۲۰۲۶/۰۷/۱۱): وضعیت "EXPIRED" (منقضی‌شده به دلیل عدم پرداخت در مهلت)
 // به STATUS_MAP و به لیست وضعیت‌های «غیرقابل لغو» اضافه شد.
+//
+// 🆕 تسک ۱۱ چک‌لیست کارفرما (افزودن نقش مدیر مالی به سیستم): نقش FINANCE_MANAGER هم
+// حالا می‌تواند این صفحه را ببیند (فقط لیست رزروها، بدون امکان لغو/حذف — دقیقاً مثل
+// SUPPORT_AGENT). پیام هشدار زیر عنوان صفحه از حالت هاردکدشده‌ی مخصوص SUPPORT_AGENT
+// در آمد و حالا برای هر دو نقش غیر-SUPER_ADMIN پیام درست و متناسب با نقش خودشان را نشان می‌دهد.
+//
+// 🆕 تسک 22 چک‌لیست کارفرما (امکان مشاهده جزئیات ووچر برای پشتیبانی) - 2026/07/16:
+// قبلا در جدول فقط تاریخ ورود/خروج، نام و شماره مسافر نمایش داده می‌شد. حالا یک دکمه
+// چشم به ستون عملیات اضافه شد که برای همه نقش‌هایی که اصلا اجازه دیدن این صفحه را
+// دارند فعال است (SUPPORT_AGENT دارای تیک تب bookings، FINANCE_MANAGER و SUPER_ADMIN) -
+// نه فقط SUPER_ADMIN، چون خواسته کارفرما دقیقا این بود که پشتیبانی هم بتواند جزئیات
+// کامل ووچر را ببیند. با کلیک، مودالی باز می‌شود و اطلاعات کامل رزرو را نشان می‌دهد:
+// تعداد دقیق نفرات (مبنا + اضافه)، کد ملی ثبت‌شده (در صورت وجود روی رزروهای قدیمی‌تر)،
+// کد اقامتگاه و شناسه رزرو در اتاقک، شناسه داخلی و کد پیگیری رزرو، و جزئیات کامل
+// وضعیت/دلیل لغو/تاریخ ثبت. تمام این فیلدها از قبل توسط GET /api/admin/bookings برگردانده
+// می‌شدند (select("*") + پیوست guest)، فقط در جدول رندر نمی‌شدند؛ پس هیچ فراخوانی API
+// جدید یا ستون/جدول دیتابیس جدیدی برای این تسک لازم نبود. صفحه عمومی ووچر
+// (src/app/voucher/[id]/page.tsx) عمدا اینجا reuse نشد، چون آن صفحه فقط برای صاحب رزرو
+// (userId === currentUserId) باز می‌شود و ادمین/پشتیبان را رد می‌کند؛ به همین دلیل یک
+// مودال مستقل با همان ساختار اطلاعاتی، داخل خود پنل ادمین ساخته شد.
 
 "use client";
 
 import { useEffect, useState } from "react";
-import { Search, Loader2, CalendarDays, ExternalLink, User, Ban, Trash2, X, AlertTriangle } from "lucide-react";
+import { Search, Loader2, CalendarDays, ExternalLink, User, Ban, Trash2, X, AlertTriangle, Eye, Users } from "lucide-react";
 import { formatPrice } from "@/utils/priceCalculator";
 import { useAuthStore } from "@/store/authStore";
 
@@ -53,6 +73,9 @@ export default function AdminBookingsPage() {
   const [deleteTarget, setDeleteTarget] = useState<any | null>(null);
   const [deleteConfirmInput, setDeleteConfirmInput] = useState("");
   const [isDeleting, setIsDeleting] = useState(false);
+
+  // --- مودال جزئیات کامل ووچر (تسک ۲۲ چک‌لیست کارفرما) ---
+  const [detailsTarget, setDetailsTarget] = useState<any | null>(null);
 
   useEffect(() => {
     const delayDebounceFn = setTimeout(() => {
@@ -172,7 +195,7 @@ export default function AdminBookingsPage() {
 
       {!isSuperAdmin && (
         <div className="p-4 rounded-xl bg-orange-50 text-orange-700 font-bold text-sm">
-          شما با نقش پشتیبان (SUPPORT_AGENT) وارد شده‌اید؛ لغو یا حذف رزرو فقط برای مدیر ارشد (SUPER_ADMIN) فعال است.
+          شما با نقش {currentUser?.role === "FINANCE_MANAGER" ? "مدیر مالی (FINANCE_MANAGER)" : "پشتیبان (SUPPORT_AGENT)"} وارد شده‌اید؛ لغو یا حذف رزرو فقط برای مدیر ارشد (SUPER_ADMIN) فعال است.
         </div>
       )}
 
@@ -283,28 +306,37 @@ export default function AdminBookingsPage() {
                       {new Date(b.createdAt).toLocaleDateString("fa-IR")}
                     </td>
                     <td className="px-6 py-4">
-                      {isSuperAdmin ? (
-                        <div className="flex items-center gap-2">
-                          {!isCancelled(b) && (
+                      <div className="flex items-center gap-2">
+                        {/* 🆕 تسک ۲۲: دکمه‌ی مشاهده جزئیات کامل ووچر — برای همه‌ی نقش‌هایی
+                            که اصلاً اجازه‌ی دیدن این صفحه را دارند فعال است، نه فقط SUPER_ADMIN */}
+                        <button
+                          onClick={() => setDetailsTarget(b)}
+                          title="مشاهده جزئیات کامل / ووچر"
+                          className="p-2 rounded-lg bg-cyan-50 text-balkun-cyan hover:bg-cyan-100 transition-colors"
+                        >
+                          <Eye className="w-4 h-4" />
+                        </button>
+                        {isSuperAdmin && (
+                          <>
+                            {!isCancelled(b) && (
+                              <button
+                                onClick={() => openCancelModal(b)}
+                                title="لغو رزرو"
+                                className="p-2 rounded-lg bg-orange-50 text-balkun-orange hover:bg-orange-100 transition-colors"
+                              >
+                                <Ban className="w-4 h-4" />
+                              </button>
+                            )}
                             <button
-                              onClick={() => openCancelModal(b)}
-                              title="لغو رزرو"
-                              className="p-2 rounded-lg bg-orange-50 text-balkun-orange hover:bg-orange-100 transition-colors"
+                              onClick={() => openDeleteModal(b)}
+                              title="حذف دائمی رزرو"
+                              className="p-2 rounded-lg bg-red-50 text-red-600 hover:bg-red-100 transition-colors"
                             >
-                              <Ban className="w-4 h-4" />
+                              <Trash2 className="w-4 h-4" />
                             </button>
-                          )}
-                          <button
-                            onClick={() => openDeleteModal(b)}
-                            title="حذف دائمی رزرو"
-                            className="p-2 rounded-lg bg-red-50 text-red-600 hover:bg-red-100 transition-colors"
-                          >
-                            <Trash2 className="w-4 h-4" />
-                          </button>
-                        </div>
-                      ) : (
-                        <span className="text-xs text-slate-300 font-bold">—</span>
-                      )}
+                          </>
+                        )}
+                      </div>
                     </td>
                   </tr>
                 ))
@@ -429,6 +461,110 @@ export default function AdminBookingsPage() {
               >
                 {isDeleting ? <Loader2 className="w-4 h-4 animate-spin" /> : "حذف برای همیشه"}
               </button>
+            </div>
+          </div>
+        </div>
+      )}
+
+      {/* --- مودال جزئیات کامل رزرو / ووچر (تسک ۲۲ چک‌لیست کارفرما) --- */}
+      {detailsTarget && (
+        <div className="fixed inset-0 z-[70] flex items-center justify-center p-4 bg-black/50" onClick={() => setDetailsTarget(null)}>
+          <div
+            className="bg-white rounded-2xl shadow-2xl w-full max-w-xl max-h-[90vh] overflow-y-auto flex flex-col"
+            onClick={(e) => e.stopPropagation()}
+          >
+            <div className="flex items-center justify-between p-6 pb-4 border-b border-slate-100 sticky top-0 bg-white z-10">
+              <h3 className="font-black text-lg text-balkun-navy flex items-center gap-2">
+                <Eye className="w-5 h-5 text-balkun-cyan" /> جزئیات کامل رزرو / ووچر
+              </h3>
+              <button onClick={() => setDetailsTarget(null)} className="p-1.5 text-slate-400 hover:text-slate-600">
+                <X className="w-5 h-5" />
+              </button>
+            </div>
+
+            <div className="p-6 flex flex-col gap-6">
+              {/* کد پیگیری و وضعیت */}
+              <div className="flex items-center justify-between flex-wrap gap-2">
+                <span className="text-xs font-bold text-slate-400">
+                  کد پیگیری: <span className="font-mono text-slate-700 tracking-widest" dir="ltr">{detailsTarget.id.split("-")[0].toUpperCase()}</span>
+                </span>
+                <span className={`px-2.5 py-1 rounded-md text-[11px] font-bold ${STATUS_MAP[detailsTarget.status]?.color || "bg-slate-100"}`}>
+                  {STATUS_MAP[detailsTarget.status]?.label || detailsTarget.status}
+                </span>
+              </div>
+
+              {detailsTarget.cancelReason && (
+                <div className="bg-red-50 text-red-600 text-xs font-bold p-3 rounded-xl">
+                  دلیل لغو: {detailsTarget.cancelReason}
+                </div>
+              )}
+
+              {/* اطلاعات اقامتگاه */}
+              <div>
+                <h4 className="text-xs font-bold text-slate-400 mb-2 uppercase tracking-widest">اطلاعات اقامتگاه</h4>
+                <p className="text-base font-black text-slate-800">{detailsTarget.roomName}</p>
+                <p className="text-xs font-bold text-slate-500 mt-1">کد اقامتگاه اتاقک: {detailsTarget.roomId}</p>
+                <p className="text-xs font-bold text-slate-500 mt-1 flex items-center gap-1">
+                  <ExternalLink className="w-3 h-3" /> شناسه رزرو در اتاقک: {detailsTarget.otaghakBookingId || "ندارد"}
+                </p>
+              </div>
+
+              <div className="w-full h-px bg-slate-100 border-t border-dashed border-slate-300" />
+
+              {/* جزئیات سفر و مشخصات رزرو */}
+              <div className="grid grid-cols-2 md:grid-cols-4 gap-4">
+                <div className="flex flex-col gap-1">
+                  <span className="text-xs font-bold text-slate-400 flex items-center gap-1"><CalendarDays className="w-3 h-3" /> ورود</span>
+                  <span className="text-sm font-black text-slate-800">{new Date(detailsTarget.checkInDate).toLocaleDateString("fa-IR")}</span>
+                </div>
+                <div className="flex flex-col gap-1">
+                  <span className="text-xs font-bold text-slate-400 flex items-center gap-1"><CalendarDays className="w-3 h-3" /> خروج</span>
+                  <span className="text-sm font-black text-slate-800">{new Date(detailsTarget.checkOutDate).toLocaleDateString("fa-IR")}</span>
+                </div>
+                <div className="flex flex-col gap-1">
+                  <span className="text-xs font-bold text-slate-400 flex items-center gap-1"><Users className="w-3 h-3" /> تعداد نفرات</span>
+                  <span className="text-sm font-black text-slate-800">
+                    {detailsTarget.basePersonCount + detailsTarget.extraPersonCount} مسافر
+                    <span className="block text-[10px] font-medium text-slate-400 mt-0.5">
+                      (مبنا: {detailsTarget.basePersonCount} + اضافه: {detailsTarget.extraPersonCount})
+                    </span>
+                  </span>
+                </div>
+                {detailsTarget.nationalCode && (
+                  <div className="flex flex-col gap-1">
+                    <span className="text-xs font-bold text-slate-400">کد ملی ثبت‌شده</span>
+                    <span className="text-sm font-black text-slate-800 tracking-wider" dir="ltr">{detailsTarget.nationalCode}</span>
+                  </div>
+                )}
+              </div>
+
+              <div className="w-full h-px bg-slate-100 border-t border-dashed border-slate-300" />
+
+              {/* مهمان و پرداخت */}
+              <div className="bg-slate-50 rounded-2xl p-5 border border-slate-100 grid grid-cols-1 md:grid-cols-2 gap-5">
+                <div>
+                  <span className="text-xs font-bold text-slate-400 block mb-1">مهمان اصلی (رزرو کننده)</span>
+                  {detailsTarget.guest ? (
+                    <>
+                      <p className="text-sm font-black text-slate-800">{detailsTarget.guest.firstName} {detailsTarget.guest.lastName}</p>
+                      <p className="text-xs font-bold text-slate-500 mt-1" dir="ltr">{detailsTarget.guest.phoneNumber}</p>
+                    </>
+                  ) : (
+                    <p className="text-sm font-bold text-slate-400">ناشناس</p>
+                  )}
+                </div>
+                <div className="md:text-left">
+                  <span className="text-xs font-bold text-slate-400 block mb-1">مبلغ کل پرداختی</span>
+                  <p className="text-lg font-black text-balkun-cyan">
+                    {formatPrice(detailsTarget.totalPaidAmount)} <span className="text-xs text-slate-500">تومان</span>
+                  </p>
+                </div>
+              </div>
+
+              <p className="text-[11px] font-medium text-slate-400 text-center">
+                تاریخ ثبت رزرو: {new Date(detailsTarget.createdAt).toLocaleDateString("fa-IR")} — شناسه داخلی رزرو:{" "}
+                <span className="font-mono" dir="ltr">{detailsTarget.id}</span>
+              </p>
             </div>
           </div>
         </div>

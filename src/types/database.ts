@@ -126,6 +126,13 @@ export interface Booking {
   isVisibleForUser: boolean;
   cancelReason: string | null;
   createdAt: Date | string;
+  // 🆕 تسک ۲۷ چک‌لیست کارفرما (پرداخت ترکیبی کیف پول + درگاه): اگر بخشی از مبلغ
+  // این رزرو از کیف پول (شخصی یا مشترک سازمانی) به‌صورت پیش‌پرداخت کسر شده باشد،
+  // مقدار آن اینجا ثبت می‌شود؛ باقیمانده‌ی قابل پرداخت رزرو همیشه برابر است با:
+  // totalPaidAmount - (walletAmountApplied || 0)
+  walletAmountApplied?: number | null;
+  // اینکه پیش‌پرداخت بالا از کدام کیف پول کسر شده — برای عودت صحیح در صورت لغو/انقضا
+  walletTypeApplied?: "NORMAL" | "ORGANIZATIONAL" | null;
 }
 
 // ==========================================
@@ -196,6 +203,16 @@ export interface InternalLog {
   loggedAt: Date | string;
 }
 
+// 🆕 تسک ۱۰ چک‌لیست کارفرما (امکان پاسخ‌گویی به لاگ‌های داخلی): هر لاگ می‌تواند
+// چند پاسخ/پیگیری از اعضای مختلف تیم داشته باشد (بند ۲۴ فایل DATABASE_SQL_LOG.md).
+export interface InternalLogReply {
+  id: string;
+  logId: string; // Reference to InternalLog.id
+  creatorId: string;
+  message: string;
+  createdAt: Date | string;
+}
+
 // ==========================================
 // 8. Saved Properties Collection (علاقه‌مندی‌ها)
 // ==========================================
@@ -226,8 +243,19 @@ export interface SavedProperty {
 // 🆕 تسک ۱۸ چک‌لیست کارفرما (امکان تغییر بنر اصلی صفحه اول): نوع اکشن جدید
 // BANNER_CHANGE اضافه شد تا افزودن/ویرایش/حذف بنرهای صفحه اول هم مثل بقیه‌ی
 // اقدامات غیرمالی/محتوایی (بلاگ، سازمانی) در admin_audit_logs ثبت شود.
-// اگر این فایل را جایگزین می‌کنید، حتماً migration مربوطه (بند ۱۹ سند
-// DATABASE_SQL_LOG.md) را هم روی دیتابیس Supabase اجرا کنید.
+// 🆕 تسک ۱۳ چک‌لیست کارفرما (ویرایش متن «درباره ما» توسط مدیر ارشد): نوع اکشن
+// جدید SITE_CONTENT_CHANGE اضافه شد تا هر بار مدیر ارشد متن صفحه‌ی درباره‌ما را
+// از پنل ویرایش می‌کند، در admin_audit_logs ثبت شود.
+// 🆕 تسک ۸ چک‌لیست کارفرما (امکان حذف برای مدیران ارشد): دو نوع اکشن جدید
+// USER_DELETE و TICKET_DELETE اضافه شد تا «حذف کاربر» و «حذف تیکت» توسط مدیر ارشد
+// هم مثل بقیه‌ی اقدامات حساس، به‌صورت اجباری در admin_audit_logs ثبت شود و در
+// صفحه‌ی «لاگ فعالیت‌ها» (`/admin/activity-log`) قابل ردیابی باشد.
+// (نکته: حذف خودِ ردیف‌های لاگ — چه در /admin/activity-log و چه در /admin/logs —
+// عمداً در همین جدول ثبت نمی‌شود تا تجربه‌ی «پاک‌سازی لاگ» واقعاً پاک‌سازی باشد؛
+// نگاه کنید به توضیح تسک ۸ در balkun-tasks-checklist.md.)
+// اگر این فایل را جایگزین می‌کنید، حتماً migration مربوطه (بند ۲۳ سند
+// DATABASE_SQL_LOG.md) را هم روی دیتابیس Supabase اجرا کنید تا ستون actionType
+// این دو مقدار جدید را بپذیرد.
 export type AdminActionType =
   | "ROLE_CHANGE"
   | "WALLET_ADJUST"
@@ -242,6 +270,9 @@ export type AdminActionType =
   | "TICKET_STATUS_CHANGE"
   | "ORGANIZATION_CHANGE"
   | "BANNER_CHANGE"
+  | "SITE_CONTENT_CHANGE"
+  | "USER_DELETE"
+  | "TICKET_DELETE"
   | "OTHER";
 
 export interface AdminAuditLog {
@@ -379,5 +410,66 @@ export interface UserNotification {
   message: string;
   linkUrl: string | null; // در صورت وجود، کلیک روی اعلان کاربر را به این آدرس می‌برد
   isRead: boolean;
+  createdAt: Date | string;
+}
+
+// ==========================================
+// 15. Site Content Collection (متن صفحات محتوایی سایت — تسک ۱۳ چک‌لیست کارفرما)
+// ==========================================
+// 🆕 اضافه شد تا مدیر ارشد بتواند متن صفحه‌ی «درباره ما» را بدون نیاز به دخالت
+// دولوپر و دیپلوی مجدد، از پنل مدیریت ویرایش کند. این جدول به شکل key/value عمومی
+// طراحی شده (نه فقط یک ستون ثابت برای درباره‌ما) تا در آینده برای صفحات محتوایی
+// مشابه دیگر (مثل قوانین و مقررات — مورد ۱۴ چک‌لیست کارفرما) هم با همین یک جدول
+// و بدون migration جدید قابل استفاده باشد؛ هر ردیف با یک key منحصربه‌فرد (مثلاً
+// "about") شناسایی می‌شود و ستون content کل محتوای آن صفحه را به‌صورت JSON نگه
+// می‌دارد. شکل دقیق JSON صفحه‌ی درباره‌ما با AboutPageContent (در
+// src/lib/siteContent/siteContentService.ts) مشخص شده.
+export interface SiteContent {
+  key: string;
+  content: Record<string, unknown>;
+  updatedAt: Date | string;
+  updatedBy: string | null; // Reference to User.id (کدام ادمین آخرین‌بار ویرایش کرده)
+}
+
+// ==========================================
+// 16. SMS Logs Collection (وضعیت ارسال پیامک — مورد ۲۶ چک‌لیست کارفرما)
+// ==========================================
+// 🆕 اضافه شد تا مدیر ارشد، پشتیبانی و مدیر مالی بتوانند از پنل ادمین جدید
+// (`/admin/sms-logs`) وضعیت دقیق هر پیامک ارسالی سیستم را ببینند — قبل از این
+// تسک، خروجی هر ارسال پیامک فقط یک خط console.log/console.warn زودگذر در سرور
+// بود که با ری‌استارت سرور از بین می‌رفت و هیچ‌جا در دیتابیس ذخیره نمی‌شد.
+// تنها نقطه‌ی نوشتن روی این جدول src/lib/sms/smsLogService.ts است — دقیقاً
+// هم‌الگو با سایر جداول تک‌نقطه‌ای پروژه (admin_audit_logs، notifications).
+//
+// ⚠️ نکته‌ی مهم درباره‌ی محدوده‌ی فعلی این تسک: طبق تصمیم صریح کارفرما، در این
+// مرحله فقط زیرساخت (این جدول + سرویس لاگ + پنل نمایش + کلاینت آماده‌ی کاوه‌نگار
+// در src/lib/sms/kavenegarClient.ts) ساخته می‌شود. تا وقتی SMS_API_KEY واقعی در
+// .env.local قرار نگرفته، SMS_CONFIG.useMock همچنان true می‌ماند و تمام ردیف‌های
+// این جدول با status="MOCK" ثبت می‌شوند — درست مثل رفتار قبلی سیستم، با این تفاوت
+// که از این پس در پنل ادمین هم قابل مشاهده و پیگیری‌اند. به محض دریافت کلید واقعی
+// از کارفرما و قرار دادن آن در .env.local (بدون نیاز به هیچ تغییر کد یا دیتابیس
+// دیگری)، همین جدول وضعیت واقعی SENT/FAILED هر پیامک را ثبت خواهد کرد.
+export type SmsMessageType =
+  | "OTP"
+  | "WELCOME"
+  | "BOOKING_CONFIRMED"
+  | "VOUCHER_ISSUED"
+  | "BOOKING_CANCELLED"
+  | "REFUND"
+  | "TICKET_REPLY";
+
+export type SmsLogStatus = "MOCK" | "SENT" | "FAILED";
+
+export interface SmsLog {
+  id: string;
+  messageType: SmsMessageType;
+  recipientPhone: string;
+  messageText: string;
+  status: SmsLogStatus;
+  providerMessageId: string | null; // شناسه‌ی پیامک که کاوه‌نگار پس از ارسال موفق برمی‌گرداند
+  errorMessage: string | null; // متن خطای دریافتی از کاوه‌نگار (فقط وقتی status="FAILED")
+  relatedUserId: string | null; // Reference to User.id (در صورت وجود)
+  relatedBookingId: string | null; // Reference to Booking.id (در صورت وجود)
+  relatedTicketId: string | null; // Reference to Ticket.id (در صورت وجود)
   createdAt: Date | string;
 }

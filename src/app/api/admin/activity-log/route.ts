@@ -1,3 +1,4 @@
+
 // مسیر: src/app/api/admin/activity-log/route.ts
 //
 // 🆕 تسک ۲ چک‌لیست کارفرما (نمایش لاگ فعالیت‌های پشتیبانی، مالی و مدیر ارشد):
@@ -16,12 +17,24 @@
 //
 // این یک عملیات حساس/نظارتی است، پس مثل wallet-history از سیستم تب‌های تفویضی
 // (requireAdminTabAccess) استفاده نمی‌کند و مستقیماً با requireAdminRole کنترل می‌شود.
+//
+// 🆕 تسک ۸ چک‌لیست کارفرما (امکان حذف برای مدیران ارشد): متد DELETE به همین روت
+// اضافه شد تا مدیر ارشد بتواند تک‌تک ردیف‌های لاگ را حذف کند (فقط SUPER_ADMIN).
+// همچنین لیست VALID_ACTION_TYPES با انواعی که در تسک‌های ۷، ۱۳ و ۱۸ به دیتابیس
+// اضافه شده بودند (ORGANIZATION_CHANGE، BANNER_CHANGE، SITE_CONTENT_CHANGE) و دو
+// نوع جدید این تسک (USER_DELETE، TICKET_DELETE) همگام‌سازی شد تا فیلتر «نوع اقدام»
+// در صفحه برای همه‌ی انواع موجود کار کند.
+// نکته‌ی طراحی: حذف یک ردیف لاگ، خودش در همین جدول ثبت نمی‌شود — چون هدف تسک
+// «پاک‌سازی لاگ‌ها» است و ثبتِ لاگِ «حذف لاگ» آن را بی‌معنا می‌کرد.
 
 import { NextRequest, NextResponse } from "next/server";
 import { supabaseAdmin } from "@/lib/supabase-admin";
 import { requireAdminRole } from "@/lib/auth/adminAuth";
 import type { AdminActionType } from "@/types/database";
 
+// 🆕 تسک ۸: این لیست با تایپ AdminActionType در src/types/database.ts همگام شد
+// (انواع ORGANIZATION_CHANGE / BANNER_CHANGE / SITE_CONTENT_CHANGE که در تسک‌های
+// قبلی به دیتابیس اضافه شده بودند اما اینجا جا مانده بودند + دو نوع جدید این تسک).
 const VALID_ACTION_TYPES: AdminActionType[] = [
   "ROLE_CHANGE",
   "WALLET_ADJUST",
@@ -34,6 +47,11 @@ const VALID_ACTION_TYPES: AdminActionType[] = [
   "CORPORATE_NUMBER_CHANGE",
   "TICKET_REPLY",
   "TICKET_STATUS_CHANGE",
+  "ORGANIZATION_CHANGE",
+  "BANNER_CHANGE",
+  "SITE_CONTENT_CHANGE",
+  "USER_DELETE",
+  "TICKET_DELETE",
   "OTHER",
 ];
 
@@ -133,4 +151,39 @@ export async function GET(request: NextRequest) {
     viewerRole: admin.role,
     pagination: { page, pageSize, total: count || 0 },
   });
+}
+
+// 🆕 تسک ۸ چک‌لیست کارفرما — DELETE: حذف یک ردیف لاگ فعالیت (فقط مدیر ارشد).
+// شناسه‌ی لاگ به‌صورت پارامتر ?id= ارسال می‌شود. این عملیات فقط برای SUPER_ADMIN
+// باز است؛ پشتیبان و مدیر مالی (که اصلاً فقط لاگ‌های خودشان را می‌بینند) حق حذف
+// هیچ ردیفی را ندارند — حتی ردیف‌های خودشان.
+export async function DELETE(request: NextRequest) {
+  const admin = await requireAdminRole(request, ["SUPER_ADMIN"]);
+  if (!admin) {
+    return NextResponse.json({ success: false, error: "دسترسی غیرمجاز" }, { status: 403 });
+  }
+
+  const { searchParams } = new URL(request.url);
+  const logId = searchParams.get("id");
+
+  if (!logId) {
+    return NextResponse.json({ success: false, error: "شناسه‌ی لاگ ارسال نشده است" }, { status: 400 });
+  }
+
+  const { data: deleted, error } = await supabaseAdmin
+    .from("admin_audit_logs")
+    .delete()
+    .eq("id", logId)
+    .select("id")
+    .maybeSingle();
+
+  if (error) {
+    console.error("Admin Activity Log Delete Error:", error);
+    return NextResponse.json({ success: false, error: "خطا در حذف لاگ" }, { status: 500 });
+  }
+  if (!deleted) {
+    return NextResponse.json({ success: false, error: "لاگ مورد نظر یافت نشد" }, { status: 404 });
+  }
+
+  return NextResponse.json({ success: true, message: "لاگ با موفقیت حذف شد" });
 }

@@ -3,35 +3,73 @@
 // تنها نقطه‌ی ارسال پیامک در کل پروژه. تمام بخش‌های دیگر (OTP، خوش‌آمدگویی،
 // و اطلاع‌رسانی چرخه‌ی رزرو) باید فقط از همین فایل استفاده کنند تا اتصال
 // به پنل پیامکی واقعی در یک‌جا متمرکز و قابل تعویض باشد.
+//
+// 🆕 مورد ۲۶ چک‌لیست کارفرما (عدم نمایش پنل کاوه‌نگار / وضعیت ارسال پیامک):
+// از این پس هر بار این فایل پیامکی ارسال می‌کند (چه در حالت Mock، چه با تلاش
+// واقعی از طریق کاوه‌نگار)، نتیجه‌ی دقیق آن با logSmsAttempt در جدول جدید
+// sms_logs ثبت می‌شود تا در پنل ادمین (/admin/sms-logs) توسط مدیر ارشد، پشتیبانی
+// و مدیر مالی قابل مشاهده باشد. تا وقتی SMS_API_KEY واقعی تنظیم نشده (یعنی
+// useMock === true)، رفتار قبلی سیستم دقیقاً حفظ شده (فقط چاپ در کنسول سرور)؛
+// فقط یک خط logSmsAttempt اضافه شده تا همان رویداد Mock هم در پنل قابل مشاهده باشد.
+// وقتی useMock === false شود، به‌جای throw/warn ساکت قبلی، حالا واقعاً از طریق
+// src/lib/sms/kavenegarClient.ts تلاش برای ارسال انجام می‌شود و نتیجه‌ی واقعی
+// (موفق/ناموفق + پیام خطا) هم لاگ و هم (برای OTP) در صورت خطا throw می‌شود —
+// دقیقاً با همان سطح «حیاتی/غیرحیاتی» که هر تابع قبلاً داشت.
+//
+// 🆕 هر تابع یک پارامتر اختیاری آخر relatedIds گرفته تا در صورت تمایل بتوان
+// شناسه‌ی کاربر/رزرو/تیکت مرتبط را هم برای نمایش بهتر در پنل ثبت کرد. این
+// پارامتر کاملاً اختیاری است، پس هیچ‌کدام از نقاط فراخوانی فعلی در پروژه نیاز
+// به تغییر ندارند (Backward-Compatible).
 
 import { SMS_CONFIG } from "./smsConfig";
+import { sendKavenegarSms } from "./kavenegarClient";
+import { logSmsAttempt, type SmsRelatedIds } from "./smsLogService";
 
 /**
  * ارسال کد تایید (OTP) به شماره موبایل کاربر.
  * در حالت Mock، کد فقط در کنسول سرور چاپ می‌شود.
- * این تابع عمداً در حالت غیر Mock خطا می‌دهد چون OTP برای جریان اصلی حیاتی است
- * و نباید بی‌صدا نادیده گرفته شود.
+ * این تابع عمداً در حالت غیر Mock هم اگر ارسال واقعی ناموفق باشد خطا می‌دهد،
+ * چون OTP برای جریان اصلی حیاتی است و نباید بی‌صدا نادیده گرفته شود.
  */
-export async function sendOtpSms(phoneNumber: string, code: string): Promise<void> {
+export async function sendOtpSms(phoneNumber: string, code: string, relatedIds?: SmsRelatedIds): Promise<void> {
+  const message = `کد تایید بالکن شما: ${code}`;
+
   if (SMS_CONFIG.useMock) {
     console.log(`[Balkun MOCK SMS] کد تایید برای شماره ${phoneNumber} : ${code}`);
+    await logSmsAttempt({
+      messageType: "OTP",
+      recipientPhone: phoneNumber,
+      messageText: message,
+      status: "MOCK",
+      ...relatedIds,
+    });
     return;
   }
 
-  // TODO فاز ۷: اتصال واقعی به پنل پیامکی ایران (به محض دریافت کلید API).
-  throw new Error(
-    "اتصال واقعی پنل پیامکی هنوز پیاده‌سازی نشده است (فاز ۷). لطفا SMS_USE_MOCK=true قرار دهید."
-  );
+  const result = await sendKavenegarSms(phoneNumber, message);
+  await logSmsAttempt({
+    messageType: "OTP",
+    recipientPhone: phoneNumber,
+    messageText: message,
+    status: result.success ? "SENT" : "FAILED",
+    providerMessageId: result.messageId,
+    errorMessage: result.errorMessage,
+    ...relatedIds,
+  });
+
+  if (!result.success) {
+    throw new Error(`ارسال پیامک کد تایید ناموفق بود: ${result.errorMessage || "خطای نامشخص از سرویس پیامکی"}`);
+  }
 }
 
 /**
  * ارسال پیامک خوش‌آمدگویی پس از ثبت‌نام موفق (متن متفاوت برای کاربر عادی/سازمانی).
- * طبق چک‌لیست فاز ۲ که به فاز ۷ موکول شده بود.
  */
 export async function sendWelcomeSms(
   phoneNumber: string,
   firstName: string,
-  userType: "NORMAL" | "ORGANIZATIONAL"
+  userType: "NORMAL" | "ORGANIZATIONAL",
+  relatedIds?: SmsRelatedIds
 ): Promise<void> {
   const message =
     userType === "ORGANIZATIONAL"
@@ -40,11 +78,31 @@ export async function sendWelcomeSms(
 
   if (SMS_CONFIG.useMock) {
     console.log(`[Balkun MOCK SMS - Welcome] به ${phoneNumber}: ${message}`);
+    await logSmsAttempt({
+      messageType: "WELCOME",
+      recipientPhone: phoneNumber,
+      messageText: message,
+      status: "MOCK",
+      ...relatedIds,
+    });
     return;
   }
 
-  // غیرحیاتی است — اگر پنل واقعی هنوز وصل نباشد، ثبت‌نام را متوقف نمی‌کنیم
-  console.warn("⚠️ ارسال پیامک خوش‌آمدگویی نادیده گرفته شد (پنل پیامکی واقعی هنوز وصل نشده).");
+  // غیرحیاتی است — اگر ارسال واقعی ناموفق باشد، ثبت‌نام را متوقف نمی‌کنیم؛ فقط لاگ می‌کنیم
+  const result = await sendKavenegarSms(phoneNumber, message);
+  await logSmsAttempt({
+    messageType: "WELCOME",
+    recipientPhone: phoneNumber,
+    messageText: message,
+    status: result.success ? "SENT" : "FAILED",
+    providerMessageId: result.messageId,
+    errorMessage: result.errorMessage,
+    ...relatedIds,
+  });
+
+  if (!result.success) {
+    console.warn(`⚠️ ارسال پیامک خوش‌آمدگویی ناموفق بود: ${result.errorMessage}`);
+  }
 }
 
 /**
@@ -55,17 +113,38 @@ export async function sendBookingConfirmedSms(
   phoneNumber: string,
   firstName: string,
   roomName: string,
-  trackingCode: string
+  trackingCode: string,
+  relatedIds?: SmsRelatedIds
 ): Promise<void> {
   const message = `${firstName} عزیز، رزرو شما برای «${roomName}» با موفقیت تایید و پرداخت شد. کد پیگیری: ${trackingCode}`;
 
   if (SMS_CONFIG.useMock) {
     console.log(`[Balkun MOCK SMS - Booking Confirmed] به ${phoneNumber}: ${message}`);
+    await logSmsAttempt({
+      messageType: "BOOKING_CONFIRMED",
+      recipientPhone: phoneNumber,
+      messageText: message,
+      status: "MOCK",
+      ...relatedIds,
+    });
     return;
   }
 
-  // غیرحیاتی است — عدم ارسال این پیامک نباید جریان مالی پرداخت را مختل کند
-  console.warn("⚠️ ارسال پیامک تایید رزرو نادیده گرفته شد (پنل پیامکی واقعی هنوز وصل نشده).");
+  // غیرحیاتی است — عدم ارسال این پیامک نباید جریان مالی پرداخت را مختل کند؛ فقط لاگ می‌کنیم
+  const result = await sendKavenegarSms(phoneNumber, message);
+  await logSmsAttempt({
+    messageType: "BOOKING_CONFIRMED",
+    recipientPhone: phoneNumber,
+    messageText: message,
+    status: result.success ? "SENT" : "FAILED",
+    providerMessageId: result.messageId,
+    errorMessage: result.errorMessage,
+    ...relatedIds,
+  });
+
+  if (!result.success) {
+    console.warn(`⚠️ ارسال پیامک تایید رزرو ناموفق بود: ${result.errorMessage}`);
+  }
 }
 
 /**
@@ -78,16 +157,39 @@ export async function sendBookingConfirmedSms(
 export async function sendVoucherIssuedSms(
   phoneNumber: string,
   firstName: string,
-  bookingId: string
+  bookingId: string,
+  relatedIds?: Omit<SmsRelatedIds, "relatedBookingId">
 ): Promise<void> {
   const message = `${firstName} عزیز، ووچر رزرو شما آماده شد. از بخش «رزروهای من» در پروفایل بالکن قابل مشاهده است. کد رزرو: ${bookingId.split("-")[0]}`;
 
   if (SMS_CONFIG.useMock) {
     console.log(`[Balkun MOCK SMS - Voucher Issued] به ${phoneNumber}: ${message}`);
+    await logSmsAttempt({
+      messageType: "VOUCHER_ISSUED",
+      recipientPhone: phoneNumber,
+      messageText: message,
+      status: "MOCK",
+      relatedBookingId: bookingId,
+      ...relatedIds,
+    });
     return;
   }
 
-  console.warn("⚠️ ارسال پیامک صدور ووچر نادیده گرفته شد (پنل پیامکی واقعی هنوز وصل نشده).");
+  const result = await sendKavenegarSms(phoneNumber, message);
+  await logSmsAttempt({
+    messageType: "VOUCHER_ISSUED",
+    recipientPhone: phoneNumber,
+    messageText: message,
+    status: result.success ? "SENT" : "FAILED",
+    providerMessageId: result.messageId,
+    errorMessage: result.errorMessage,
+    relatedBookingId: bookingId,
+    ...relatedIds,
+  });
+
+  if (!result.success) {
+    console.warn(`⚠️ ارسال پیامک صدور ووچر ناموفق بود: ${result.errorMessage}`);
+  }
 }
 
 /**
@@ -97,7 +199,8 @@ export async function sendBookingCancelledSms(
   phoneNumber: string,
   firstName: string,
   roomName: string,
-  cancelledBy: "GUEST" | "HOST"
+  cancelledBy: "GUEST" | "HOST",
+  relatedIds?: SmsRelatedIds
 ): Promise<void> {
   const message =
     cancelledBy === "GUEST"
@@ -106,10 +209,30 @@ export async function sendBookingCancelledSms(
 
   if (SMS_CONFIG.useMock) {
     console.log(`[Balkun MOCK SMS - Booking Cancelled] به ${phoneNumber}: ${message}`);
+    await logSmsAttempt({
+      messageType: "BOOKING_CANCELLED",
+      recipientPhone: phoneNumber,
+      messageText: message,
+      status: "MOCK",
+      ...relatedIds,
+    });
     return;
   }
 
-  console.warn("⚠️ ارسال پیامک لغو رزرو نادیده گرفته شد (پنل پیامکی واقعی هنوز وصل نشده).");
+  const result = await sendKavenegarSms(phoneNumber, message);
+  await logSmsAttempt({
+    messageType: "BOOKING_CANCELLED",
+    recipientPhone: phoneNumber,
+    messageText: message,
+    status: result.success ? "SENT" : "FAILED",
+    providerMessageId: result.messageId,
+    errorMessage: result.errorMessage,
+    ...relatedIds,
+  });
+
+  if (!result.success) {
+    console.warn(`⚠️ ارسال پیامک لغو رزرو ناموفق بود: ${result.errorMessage}`);
+  }
 }
 
 /**
@@ -118,16 +241,37 @@ export async function sendBookingCancelledSms(
 export async function sendRefundSms(
   phoneNumber: string,
   firstName: string,
-  formattedAmount: string
+  formattedAmount: string,
+  relatedIds?: SmsRelatedIds
 ): Promise<void> {
   const message = `${firstName} عزیز، مبلغ ${formattedAmount} تومان بابت رزرو لغوشده به کیف پول بالکن شما بازگشت داده شد.`;
 
   if (SMS_CONFIG.useMock) {
     console.log(`[Balkun MOCK SMS - Refund] به ${phoneNumber}: ${message}`);
+    await logSmsAttempt({
+      messageType: "REFUND",
+      recipientPhone: phoneNumber,
+      messageText: message,
+      status: "MOCK",
+      ...relatedIds,
+    });
     return;
   }
 
-  console.warn("⚠️ ارسال پیامک عودت وجه نادیده گرفته شد (پنل پیامکی واقعی هنوز وصل نشده).");
+  const result = await sendKavenegarSms(phoneNumber, message);
+  await logSmsAttempt({
+    messageType: "REFUND",
+    recipientPhone: phoneNumber,
+    messageText: message,
+    status: result.success ? "SENT" : "FAILED",
+    providerMessageId: result.messageId,
+    errorMessage: result.errorMessage,
+    ...relatedIds,
+  });
+
+  if (!result.success) {
+    console.warn(`⚠️ ارسال پیامک عودت وجه ناموفق بود: ${result.errorMessage}`);
+  }
 }
 
 /**
@@ -141,14 +285,35 @@ export async function sendRefundSms(
 export async function sendTicketReplySms(
   phoneNumber: string,
   firstName: string,
-  ticketSubject: string
+  ticketSubject: string,
+  relatedIds?: SmsRelatedIds
 ): Promise<void> {
   const message = `${firstName} عزیز، تیکت پشتیبانی شما با موضوع «${ticketSubject}» پاسخ داده شد. برای مشاهده‌ی پاسخ به بخش «پشتیبانی» در پروفایل بالکن مراجعه کنید.`;
 
   if (SMS_CONFIG.useMock) {
     console.log(`[Balkun MOCK SMS - Ticket Reply] به ${phoneNumber}: ${message}`);
+    await logSmsAttempt({
+      messageType: "TICKET_REPLY",
+      recipientPhone: phoneNumber,
+      messageText: message,
+      status: "MOCK",
+      ...relatedIds,
+    });
     return;
   }
 
-  console.warn("⚠️ ارسال پیامک پاسخ تیکت نادیده گرفته شد (پنل پیامکی واقعی هنوز وصل نشده).");
+  const result = await sendKavenegarSms(phoneNumber, message);
+  await logSmsAttempt({
+    messageType: "TICKET_REPLY",
+    recipientPhone: phoneNumber,
+    messageText: message,
+    status: result.success ? "SENT" : "FAILED",
+    providerMessageId: result.messageId,
+    errorMessage: result.errorMessage,
+    ...relatedIds,
+  });
+
+  if (!result.success) {
+    console.warn(`⚠️ ارسال پیامک پاسخ تیکت ناموفق بود: ${result.errorMessage}`);
+  }
 }

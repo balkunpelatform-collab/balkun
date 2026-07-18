@@ -1,11 +1,24 @@
+
+// مسیر: src/app/admin/tickets/page.tsx
+//
+// 🆕 تسک ۸ چک‌لیست کارفرما (امکان حذف برای مدیران ارشد): در ستون «عملیات»، برای
+// مدیر ارشد یک دکمه‌ی حذف تیکت (در کنار «مشاهده و پاسخ») اضافه شد. این دکمه برای
+// نقش‌های دیگر اصلاً رندر نمی‌شود و سرور هم حذف را فقط برای SUPER_ADMIN می‌پذیرد
+// (DELETE /api/admin/tickets/[id]) — با حذف تیکت، تمام پیام‌هایش هم حذف می‌شوند.
+
 "use client";
 
 import { useEffect, useState } from "react";
 import Link from "next/link";
-import { Loader2, HeadphonesIcon, MessageSquare } from "lucide-react";
+import { Loader2, HeadphonesIcon, MessageSquare, Trash2 } from "lucide-react";
 import { TICKET_STATUS_LABELS, TICKET_STATUS_STYLES, getCategoryLabel } from "@/constants/support";
+import { useAuthStore } from "@/store/authStore";
 
 export default function AdminTicketsPage() {
+  // 🆕 تسک ۸: نقش کاربر واردشده برای نمایش/پنهان‌کردن دکمه‌ی حذف (فقط مدیر ارشد)
+  const { user: currentUser } = useAuthStore();
+  const isSuperAdmin = currentUser?.role === "SUPER_ADMIN";
+
   const [tickets, setTickets] = useState<any[]>([]);
   const [isLoading, setIsLoading] = useState(true);
   const [status, setStatus] = useState("");
@@ -15,6 +28,28 @@ export default function AdminTicketsPage() {
   useEffect(() => {
     fetchTickets();
   }, [status, page]);
+
+  // 🆕 تسک ۸: حذف کامل تیکت (به‌همراه تمام پیام‌هایش) توسط مدیر ارشد
+  const handleDeleteTicket = async (ticketId: string, subject: string) => {
+    if (
+      !confirm(
+        `⚠️ آیا از حذف کامل تیکت «${subject}» مطمئن هستید؟\n\nتمام پیام‌های ردوبدل‌شده در این تیکت هم برای همیشه حذف می‌شوند و قابل بازگشت نیستند.`
+      )
+    ) {
+      return;
+    }
+    try {
+      const res = await fetch(`/api/admin/tickets/${ticketId}`, { method: "DELETE" });
+      const data = await res.json();
+      if (data.success) {
+        fetchTickets();
+      } else {
+        alert(data.error || "خطا در حذف تیکت");
+      }
+    } catch (error) {
+      alert("خطا در ارتباط با سرور");
+    }
+  };
 
   const fetchTickets = async () => {
     setIsLoading(true);
@@ -118,13 +153,25 @@ export default function AdminTicketsPage() {
                       {new Date(t.updatedAt).toLocaleDateString("fa-IR")} - {new Date(t.updatedAt).toLocaleTimeString("fa-IR", {hour: "2-digit", minute: "2-digit"})}
                     </td>
                     <td className="px-6 py-4">
-                      <Link
-                        href={`/admin/tickets/${t.id}`}
-                        className="inline-flex items-center gap-1.5 bg-balkun-cyan/10 hover:bg-balkun-cyan text-balkun-cyan hover:text-white px-3 py-1.5 rounded-lg transition-colors font-bold text-xs"
-                      >
-                        <MessageSquare className="w-3.5 h-3.5" />
-                        مشاهده و پاسخ
-                      </Link>
+                      <div className="flex items-center gap-2">
+                        <Link
+                          href={`/admin/tickets/${t.id}`}
+                          className="inline-flex items-center gap-1.5 bg-balkun-cyan/10 hover:bg-balkun-cyan text-balkun-cyan hover:text-white px-3 py-1.5 rounded-lg transition-colors font-bold text-xs"
+                        >
+                          <MessageSquare className="w-3.5 h-3.5" />
+                          مشاهده و پاسخ
+                        </Link>
+                        {/* 🆕 تسک ۸: دکمه‌ی حذف تیکت — فقط مدیر ارشد */}
+                        {isSuperAdmin && (
+                          <button
+                            onClick={() => handleDeleteTicket(t.id, t.subject)}
+                            className="inline-flex items-center justify-center bg-red-50 hover:bg-red-500 hover:text-white text-red-500 p-2 rounded-lg transition-colors"
+                            title="حذف کامل تیکت (فقط مدیر ارشد)"
+                          >
+                            <Trash2 className="w-3.5 h-3.5" />
+                          </button>
+                        )}
+                      </div>
                     </td>
                   </tr>
                 ))
@@ -146,3 +193,4 @@ export default function AdminTicketsPage() {
     </div>
   );
 }
+

@@ -12,6 +12,19 @@
 // تصمیم معماری: SUPER_ADMIN همیشه و بدون قیدوشرط به تمام تب‌ها دسترسی کامل دارد
 // (تا هیچ‌وقت مدیر اصلی خودش را قفل نکند)؛ ستون permissions روی جدول users
 // فقط برای کاربران با نقش SUPPORT_AGENT معنا و کاربرد دارد.
+//
+// 🆕 تسک ۱۱ چک‌لیست کارفرما (افزودن نقش مدیر مالی به سیستم): FINANCE_MANAGER هم
+// حالا می‌تواند از همین requireAdminTabAccess عبور کند، اما بر خلاف SUPPORT_AGENT
+// دسترسی‌اش «تفویضی» نیست (هیچ‌وقت از ستون permissions خوانده نمی‌شود) بلکه «ثابت»
+// و محدود به یک لیست کوچک از پیش تعیین‌شده از تب‌هاست (FINANCE_MANAGER_FIXED_TABS
+// پایین همین فایل) — دقیقاً همان الگوی دسترسی ثابتی که مدیر مالی از تسک ۱ تا کنون
+// داشته (داشبورد، تاریخچه کیف پول، پرداخت‌ها، کاربران). فعلاً تنها تب داخل این لیست
+// «logs» (لاگ‌های سیستم/یادداشت‌های داخلی) است؛ «bookings» (مشاهده رزروها) و
+// «سازمان‌ها» با منطق جداگانه‌ای در همان Route Handler مربوطه کنترل می‌شوند، نه از
+// این تابع عمومی، چون آن دو مسیر شامل عملیات نوشتنی/حساس (لغو یا حذف رزرو، شارژ
+// کیف پول سازمانی) هم هستند که باید همچنان منحصراً SUPER_ADMIN/SUPPORT_AGENT بمانند
+// و مدیر مالی هرگز نباید با تغییر همین یک تابع عمومی، به‌طور ناخواسته به آن‌ها
+// دسترسی نوشتنی پیدا کند.
 
 import { supabaseAdmin } from "@/lib/supabase-admin";
 import type { UserRole, AdminActionType } from "@/types/database";
@@ -22,6 +35,10 @@ export interface AdminContext {
   role: UserRole;
   permissions: AdminTabKey[];
 }
+
+// لیست ثابت تب‌هایی که FINANCE_MANAGER بدون هیچ تفویضی همیشه به آن‌ها دسترسی دارد
+// (نگاه کنید به توضیح تسک ۱۱ در بالای همین فایل).
+const FINANCE_MANAGER_FIXED_TABS: AdminTabKey[] = ["logs"];
 
 export async function requireAdminRole(
   request: Request,
@@ -58,9 +75,13 @@ export async function requireAdminTabAccess(
   request: Request,
   tabKey: AdminTabKey
 ): Promise<AdminContext | null> {
-  const admin = await requireAdminRole(request, ["SUPER_ADMIN", "SUPPORT_AGENT"]);
+  const admin = await requireAdminRole(request, ["SUPER_ADMIN", "SUPPORT_AGENT", "FINANCE_MANAGER"]);
   if (!admin) return null;
   if (admin.role === "SUPER_ADMIN") return admin;
+  if (admin.role === "FINANCE_MANAGER") {
+    // دسترسی مدیر مالی هرگز از ستون permissions خوانده نمی‌شود؛ فقط لیست ثابت بالا.
+    return FINANCE_MANAGER_FIXED_TABS.includes(tabKey) ? admin : null;
+  }
   if (!admin.permissions.includes(tabKey)) return null;
   return admin;
 }

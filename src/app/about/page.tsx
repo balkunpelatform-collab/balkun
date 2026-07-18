@@ -1,34 +1,39 @@
 // مسیر: src/app/about/page.tsx
 // 🆕 تسک ۱۶: شماره تلفن بالکن در بخش «راه‌های ارتباط با ما» اکنون قابل کلیک است
 // (لینک tel:) — دقیقاً همان اصلاحی که در فوتر سایت هم انجام شد.
+//
+// 🆕 تسک ۱۳ چک‌لیست کارفرما (امکان ویرایش متن «درباره ما» توسط مدیر ارشد): متن
+// بنر بالای صفحه و متن سه کارت بخش «چرا بالکن؟» دیگر هاردکد نیستند و از جدول
+// site_content (کلید "about") خوانده می‌شوند — دقیقاً هم‌الگو با صفحه‌ی اصلی سایت
+// که بعد از تسک ۱۸ چک‌لیست کارفرما، بنرها را زنده از دیتابیس می‌خواند
+// (src/app/page.tsx). به همین دلیل این صفحه هم صراحتاً force-dynamic شد تا وقتی
+// مدیر ارشد از پنل (/admin/site-content/about) متن را تغییر می‌دهد، بدون نیاز به
+// دیپلوی یا ری‌بیلد جدید، بلافاصله روی سایت دیده شود. آیکون هر کارت (ShieldCheck/
+// HeartHandshake/Sparkles) و بخش «راه‌های ارتباط با ما» (که از COMPANY_INFO خوانده
+// می‌شود) طبق متن دقیق تسک، همچنان ثابت هستند — فقط «متن» صفحه قابل ویرایش شد.
 
 import { Building2, ShieldCheck, HeartHandshake, MapPin, Phone, Mail, Sparkles } from "lucide-react";
 import { COMPANY_INFO } from "@/constants/company";
+import { getAboutPageContent } from "@/lib/siteContent/siteContentService";
 
-const VALUES = [
-  {
-    icon: ShieldCheck,
-    title: "امنیت و اطمینان",
-    description: "تمام رزروها و تراکنش‌های مالی با بالاترین استانداردهای امنیتی پردازش می‌شوند.",
-  },
-  {
-    icon: HeartHandshake,
-    title: "پشتیبانی واقعی",
-    description: "تیم پشتیبانی بالکن در تمام مراحل قبل، حین و بعد از سفر همراه شماست.",
-  },
-  {
-    icon: Sparkles,
-    title: "کیفیت انتخاب‌شده",
-    description: "هر اقامتگاه پیش از انتشار در بالکن، بررسی و تایید کیفیت می‌شود.",
-  },
-];
+export const dynamic = "force-dynamic";
+export const revalidate = 0;
 
-export const metadata = {
-  title: `درباره ما | ${COMPANY_INFO.name}`,
-  description: COMPANY_INFO.description,
-};
+// ترتیب این آیکون‌ها با ترتیب values[] برگشتی از getAboutPageContent() یکی است
+// (کارت اول = ShieldCheck، دوم = HeartHandshake، سوم = Sparkles).
+const VALUE_ICONS = [ShieldCheck, HeartHandshake, Sparkles];
 
-export default function AboutPage() {
+export async function generateMetadata() {
+  const content = await getAboutPageContent();
+  return {
+    title: `درباره ما | ${COMPANY_INFO.name}`,
+    description: content.heroDescription,
+  };
+}
+
+export default async function AboutPage() {
+  const content = await getAboutPageContent();
+
   return (
     <div className="flex flex-col w-full">
       {/* بخش بنر بالای صفحه */}
@@ -41,10 +46,10 @@ export default function AboutPage() {
             <Building2 className="w-8 h-8 text-balkun-cyan" />
           </div>
           <h1 className="text-2xl md:text-4xl font-black text-white mb-4 leading-tight max-w-2xl">
-            درباره‌ی {COMPANY_INFO.name}
+            {content.heroTitle}
           </h1>
           <p className="text-slate-300 text-sm md:text-base max-w-xl leading-loose font-medium">
-            {COMPANY_INFO.description}
+            {content.heroDescription}
           </p>
         </div>
       </section>
@@ -52,14 +57,14 @@ export default function AboutPage() {
       {/* چرا بالکن؟ */}
       <section className="container mx-auto px-4 py-12 md:py-16">
         <h2 className="text-xl md:text-2xl font-black text-balkun-navy mb-8 text-center">
-          چرا بالکن؟
+          {content.valuesSectionTitle}
         </h2>
         <div className="grid grid-cols-1 md:grid-cols-3 gap-6">
-          {VALUES.map((value) => {
-            const Icon = value.icon;
+          {content.values.map((value, index) => {
+            const Icon = VALUE_ICONS[index] ?? Sparkles;
             return (
               <div
-                key={value.title}
+                key={index}
                 className="bg-white p-6 md:p-8 rounded-2xl shadow-sm border border-slate-100 flex flex-col items-start gap-4"
               >
                 <div className="w-12 h-12 rounded-xl bg-balkun-cyan/10 flex items-center justify-center">

@@ -11,6 +11,13 @@
 //      شارژ/کسر دستی، فعال/غیرفعال‌سازی سازمان (که بلافاصله جلوی استفاده‌ی پرسنل از کیف
 //      پول سازمانی را می‌گیرد)، و تنظیم/اجرای شارژ خودکار دوره‌ای.
 // قبل از این فایل، هیچ‌کدام از این چهار بخش در پنل ادمین قابل مشاهده یا مدیریت نبودند.
+//
+// 🆕 تسک ۱۱ چک‌لیست کارفرما (افزودن نقش مدیر مالی به سیستم): نقش FINANCE_MANAGER هم
+// حالا وارد این صفحه می‌شود، اما به‌طور خودکار و همیشگی فقط بخش (۴) «کیف پول‌های
+// سازمانی» را می‌بیند (فقط-خواندنی — دقیقاً مثل نمای SUPPORT_AGENT غیرمدیرارشد در
+// همان بخش) — نه بخش‌های (۱)، (۲) و (۳) که عملیاتی/فروش هستند، نه مالی. تب‌های
+// انتخاب بخش هم برای این نقش اصلاً رندر نمی‌شوند تا رابط کاربری‌اش ساده و متمرکز
+// روی همان چیزی بماند که در چک‌لیست خواسته شده («سازمان‌ها»).
 
 "use client";
 
@@ -116,7 +123,15 @@ type Section = "leads" | "orgUsers" | "numbers" | "wallets";
 export default function AdminCorporatePage() {
   const { user } = useAuthStore();
   const isSuperAdmin = user?.role === "SUPER_ADMIN";
-  const [section, setSection] = useState<Section>("leads");
+  // 🆕 تسک ۱۱ چک‌لیست کارفرما (افزودن نقش مدیر مالی به سیستم): مدیر مالی هم به این
+  // صفحه راه پیدا می‌کند، اما فقط به بخش «کیف پول‌های سازمانی» — یعنی همان چیزی که
+  // در متن تسک «سازمان‌ها» نامیده شده و ماهیتاً مالی/گزارشی است. سه بخش دیگر
+  // (درخواست‌های سازمانی، کاربران سازمانی فعال، لیست سفید شماره‌ها) عملیاتی/فروش
+  // هستند و از قبل هم در بک‌اند (src/lib/auth/adminAuth.ts → requireAdminTabAccess)
+  // برای این نقش مسدودند؛ پس این‌جا صرفاً هدایت پیش‌فرض و پنهان‌کردن تب‌های غیرقابل
+  // دسترسی است، نه خودِ خط دفاعی امنیتی (که همچنان سمت سرور است).
+  const isFinanceManager = user?.role === "FINANCE_MANAGER";
+  const [section, setSection] = useState<Section>(isFinanceManager ? "wallets" : "leads");
 
   return (
     <div className="flex flex-col gap-6 animate-in fade-in duration-500">
@@ -126,20 +141,24 @@ export default function AdminCorporatePage() {
           مرکز مدیریت سازمانی
         </h1>
         <p className="text-sm font-medium text-slate-500 mt-1">
-          تمام درخواست‌ها، کاربران، شماره‌ها و کیف‌پول‌های سازمانی بالکن، یکجا و متمرکز.
+          {isFinanceManager
+            ? "کیف‌پول‌های مشترک سازمانی بالکن، فقط‌خواندنی."
+            : "تمام درخواست‌ها، کاربران، شماره‌ها و کیف‌پول‌های سازمانی بالکن، یکجا و متمرکز."}
         </p>
       </div>
 
-      {/* تب‌های داخلی */}
-      <div className="flex items-center gap-2 bg-white p-1.5 rounded-2xl border border-slate-100 shadow-sm w-fit overflow-x-auto">
-        <SectionTab active={section === "leads"} onClick={() => setSection("leads")} icon={ClipboardList} label="درخواست‌های سازمانی" />
-        <SectionTab active={section === "orgUsers"} onClick={() => setSection("orgUsers")} icon={Users2} label="کاربران سازمانی فعال" />
-        <SectionTab active={section === "numbers"} onClick={() => setSection("numbers")} icon={ListChecks} label="لیست سفید شماره‌ها" />
-        <SectionTab active={section === "wallets"} onClick={() => setSection("wallets")} icon={Wallet} label="کیف پول‌های سازمانی" />
-      </div>
+      {/* تب‌های داخلی — برای مدیر مالی فقط «کیف پول‌های سازمانی» نمایش داده می‌شود */}
+      {!isFinanceManager && (
+        <div className="flex items-center gap-2 bg-white p-1.5 rounded-2xl border border-slate-100 shadow-sm w-fit overflow-x-auto">
+          <SectionTab active={section === "leads"} onClick={() => setSection("leads")} icon={ClipboardList} label="درخواست‌های سازمانی" />
+          <SectionTab active={section === "orgUsers"} onClick={() => setSection("orgUsers")} icon={Users2} label="کاربران سازمانی فعال" />
+          <SectionTab active={section === "numbers"} onClick={() => setSection("numbers")} icon={ListChecks} label="لیست سفید شماره‌ها" />
+          <SectionTab active={section === "wallets"} onClick={() => setSection("wallets")} icon={Wallet} label="کیف پول‌های سازمانی" />
+        </div>
+      )}
 
       {section === "leads" && <LeadsSection />}
-      {section === "orgUsers" && <OrgUsersSection isSuperAdmin={isSuperAdmin} />}
+      {section === "orgUsers" && <OrgUsersSection />}
       {section === "numbers" && <NumbersSection />}
       {section === "wallets" && <WalletsSection isSuperAdmin={isSuperAdmin} />}
     </div>
@@ -426,7 +445,16 @@ function LeadModal({ lead, onClose, onSaved }: { lead: OrgLead; onClose: () => v
 // ============================================================
 // بخش ۲: کاربران سازمانی فعال
 // ============================================================
-function OrgUsersSection({ isSuperAdmin }: { isSuperAdmin: boolean }) {
+// 🔧 رفع تسک ۲۳ (فعال نشدن تیک سازمانی برای پشتیبان):
+// قبلاً این بخش با یک شرط هاردکدشده (`if (!isSuperAdmin)`) فقط برای SUPER_ADMIN باز می‌شد؛
+// یعنی حتی اگر سوپرادمین تیک «سازمانی» (تب corporate) را برای یک پشتیبان (SUPPORT_AGENT)
+// فعال می‌کرد، این بخش خاص از تب سازمانی همچنان برای او قفل می‌ماند — چون این کامپوننت
+// اصلاً پرس‌وجویی به سرور نمی‌فرستاد و بدون تماس با API، خودش پیام «دسترسی غیرمجاز» نشان می‌داد.
+// در نتیجه هیچ تغییری در دسترسی‌های سرور هم نمی‌توانست این قفل کور سمت کلاینت را باز کند.
+// راه‌حل: این قفل صرفاً UI حذف شد؛ حالا همیشه درخواست واقعی به سرور ارسال می‌شود و تصمیم نهایی
+// دسترسی (که الان در src/app/api/admin/users/route.ts هم اصلاح شده تا به SUPPORT_AGENT دارای
+// دسترسی تب «سازمانی» فقط برای userType=ORGANIZATIONAL اجازه بدهد) به‌درستی سمت سرور گرفته می‌شود.
+function OrgUsersSection() {
   const [users, setUsers] = useState<OrgUser[]>([]);
   const [isLoading, setIsLoading] = useState(true);
   const [search, setSearch] = useState("");
@@ -435,13 +463,13 @@ function OrgUsersSection({ isSuperAdmin }: { isSuperAdmin: boolean }) {
   const [accessDenied, setAccessDenied] = useState(false);
 
   const fetchUsers = useCallback(async () => {
-    if (!isSuperAdmin) { setIsLoading(false); setAccessDenied(true); return; }
     setIsLoading(true);
     try {
       const query = new URLSearchParams({ page: page.toString(), userType: "ORGANIZATIONAL", ...(search && { search }) });
       const res = await fetch(`/api/admin/users?${query.toString()}`);
       const data = await res.json();
       if (data.success) {
+        setAccessDenied(false);
         setUsers(data.users || []);
         setTotal(data.pagination.total || 0);
       } else {
@@ -453,7 +481,7 @@ function OrgUsersSection({ isSuperAdmin }: { isSuperAdmin: boolean }) {
       setIsLoading(false);
     }
     // eslint-disable-next-line react-hooks/exhaustive-deps
-  }, [search, page, isSuperAdmin]);
+  }, [search, page]);
 
   useEffect(() => { fetchUsers(); }, [fetchUsers]);
 
@@ -461,7 +489,7 @@ function OrgUsersSection({ isSuperAdmin }: { isSuperAdmin: boolean }) {
     return (
       <div className="p-6 rounded-2xl bg-orange-50 text-orange-700 font-bold text-sm flex items-center gap-3">
         <AlertTriangle className="w-5 h-5 shrink-0" />
-        مشاهده‌ی لیست کاربران سازمانی (که شامل اطلاعات نقش کاربران هم می‌شود) فقط برای مدیر ارشد (SUPER_ADMIN) فعال است.
+        شما دسترسی لازم برای مشاهده‌ی لیست کاربران سازمانی را ندارید. اگر پشتیبان هستید، از مدیر ارشد بخواهید دسترسی تب «سازمانی» را برایتان فعال کند.
       </div>
     );
   }
@@ -1125,9 +1153,10 @@ function WalletsSection({ isSuperAdmin }: { isSuperAdmin: boolean }) {
     }
   };
 
-  if (!isSuperAdmin && organizations.length === 0 && !isLoading) {
-    // مدیر مالی هم می‌تواند این تب را ببیند (فقط-خواندنی)؛ این پیام صرفاً برای حالت خالی نیست، رد نمی‌شود
-  }
+  // 🆕 تسک ۱۱ چک‌لیست کارفرما: این تب برای FINANCE_MANAGER هم باز است (فقط-خواندنی)؛
+  // برخلاف نسخه‌های قبلی این کامپوننت، دیگر هیچ شرط مسدودکننده‌ای بر اساس نقش در
+  // همین‌جا وجود ندارد — تمام محدودیت‌ها با isSuperAdmin پایین همین تابع (که برای
+  // FINANCE_MANAGER هم false است) و در سطح Route Handler اعمال می‌شوند.
 
   return (
     <div className="flex flex-col gap-6">

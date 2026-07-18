@@ -20,19 +20,60 @@
 // 🆕 تسک ۱۸ چک‌لیست کارفرما (امکان تغییر بنر اصلی صفحه اول): آیتم «بنر اصلی
 // صفحه اول» با tabKey="banners" اضافه شد — دقیقاً هم‌الگو با «مدیریت بلاگ»:
 // محتوایی است، نه مالی/حساس، پس برای SUPPORT_AGENT هم قابل واگذاری است.
+// 🆕 تسک ۱۳ چک‌لیست کارفرما (ویرایش متن «درباره ما» توسط مدیر ارشد): آیتم «متن
+// صفحه درباره ما» اضافه شد. برخلاف «بنر اصلی صفحه اول»/«مدیریت بلاگ»، این آیتم
+// tabKey ندارد و فقط roles: ["SUPER_ADMIN"] دارد — چون خود متن تسک صراحتاً این
+// قابلیت را به مدیر ارشد محدود کرده، نه اینکه به SUPPORT_AGENT هم قابل تفویض باشد.
+// 🆕 تسک ۱۱ چک‌لیست کارفرما (افزودن نقش مدیر مالی به سیستم — تکمیل نهایی دامنه‌ی
+// FINANCE_MANAGER که از تسک ۱ آغاز شده بود): نقش FINANCE_MANAGER به roles سه آیتم
+// دیگر هم اضافه شد:
+//   - «مدیریت رزروها» (bookings): فقط-خواندنی — دکمه‌های لغو/حذف رزرو در خودِ صفحه
+//     (admin/bookings/page.tsx) از قبل و مستقل از این تغییر، فقط برای isSuperAdmin
+//     فعال هستند، پس مدیر مالی فقط می‌بیند.
+//   - «سازمانی» (corporate): مدیر مالی وارد همین صفحه می‌شود اما در خودِ
+//     admin/corporate/page.tsx به‌طور خودکار فقط بخش «کیف پول‌های سازمانی»
+//     (فقط-خواندنی) را می‌بیند، نه درخواست‌های سازمانی/شماره‌های سفید را — چون آن دو
+//     بخش عملیاتی/فروش هستند، نه مالی، و از قبل هم در بک‌اند (requireAdminTabAccess)
+//     برای این نقش مسدودند.
+//   - «لاگ‌های سیستم» (logs): بر خلاف دو مورد بالا، این یکی هم مشاهده و هم ثبت
+//     یادداشت داخلی جدید را برای مدیر مالی باز می‌کند — چون سیستم لاگ داخلی
+//     (تماس تلفنی، ارجاع درون‌تیمی، گزارش خطا) یک ابزار عملیاتی/گزارشی مشترک بین
+//     کل کارمندان است، نه یک عملیات مالی حساس.
+// هر سه آیتم tabKey خود را حفظ کردند (چون هنوز برای SUPPORT_AGENT هم تفویضی هستند)؛
+// شرط فیلتر تفویض در پایین همین فایل فقط برای user.role === "SUPPORT_AGENT" اعمال
+// می‌شود، پس اضافه‌شدن FINANCE_MANAGER به roles هیچ اثری روی رفتار SUPPORT_AGENT ندارد.
+// 🆕 تسک ۱۴ چک‌لیست کارفرما (امکان ویرایش متن «قوانین و مقررات» توسط مدیر ارشد):
+// آیتم «متن قوانین و مقررات» اضافه شد — دقیقاً هم‌الگو با «متن صفحه درباره ما»
+// (tabKey ندارد، roles: ["SUPER_ADMIN"] تنها). آیکون عمداً Scale انتخاب شد نه
+// ScrollText (که قبلاً برای «لاگ‌های سیستم» استفاده شده) تا این دو آیتم کاملاً
+// متفاوت از هم دیگر در سایدبار قابل تشخیص باشند.
+// 🆕 مورد ۲۶ چک‌لیست کارفرما (عدم نمایش پنل کاوه‌نگار / وضعیت ارسال پیامک):
+// آیتم «کاوه‌نگار (وضعیت پیامک‌ها)» اضافه شد. این هم مثل «لاگ فعالیت‌ها» tabKey
+// ندارد (سیستم تفویض‌دسترسی SUPPORT_AGENT روی آن اعمال نمی‌شود) و هر سه نقش
+// ثابت (SUPER_ADMIN، SUPPORT_AGENT، FINANCE_MANAGER) به آن دسترسی دارند — چون
+// طبق متن خودِ مورد ۲۶ («مدیران و پشتیبانی وضعیت ارسال پیام را نمی‌بینند»)، هر
+// سه گروه باید بتوانند وضعیت ارسال پیامک را ببینند، نه فقط مدیر ارشد.
+
+// 🆕 بهبود تجربه‌ی کاربری (درخواست کارفرما): دکمه‌های «بازگشت به سایت» و «خروج از
+// پنل» که قبلاً پایین سایدبار بودند (و با اضافه شدن آیتم‌های زیاد به منو، کاربر
+// مجبور بود اسکرول کند تا به آن‌ها برسد) از اینجا حذف و به یک هدر ثابت و همیشه در
+// دسترسِ بالای صفحه منتقل شدند — دقیقاً هم‌الگو با هدر اصلی سایت
+// (src/components/layout/header/Header.tsx). کامپوننت جدید مربوطه:
+// src/components/admin/AdminHeader.tsx. به همین دلیل ADMIN_NAV و AdminNavItem از
+// این فایل export شدند: AdminHeader.tsx همین آرایه را برای نمایش عنوان صفحه‌ی
+// فعال در هدر (بر اساس مسیر جاری) دوباره استفاده می‌کند، تا هیچ‌وقت لیست منو در
+// دو جا به‌صورت جداگانه نگه‌داری نشود.
 
 "use client";
 
 import Link from "next/link";
-import { usePathname, useRouter } from "next/navigation";
+import { usePathname } from "next/navigation";
 import {
   LayoutDashboard,
   Users,
   CalendarDays,
   HeadphonesIcon,
   ScrollText,
-  LogOut,
-  ExternalLink,
   ShieldCheck,
   Home,
   Newspaper,
@@ -41,13 +82,16 @@ import {
   History,
   Landmark,
   Images,
+  FileEdit,
+  Scale,
+  MessageSquare,
   type LucideIcon,
 } from "lucide-react";
 import { useAuthStore } from "@/store/authStore";
 import type { UserRole } from "@/types/database";
 import type { AdminTabKey } from "@/constants/adminPermissions";
 
-interface AdminNavItem {
+export interface AdminNavItem {
   id: string;
   label: string;
   href: string;
@@ -56,36 +100,27 @@ interface AdminNavItem {
   tabKey?: AdminTabKey;
 }
 
-const ADMIN_NAV: AdminNavItem[] = [
+export const ADMIN_NAV: AdminNavItem[] = [
   { id: "dashboard", label: "داشبورد کلان", href: "/admin", icon: LayoutDashboard, roles: ["SUPER_ADMIN", "FINANCE_MANAGER"] },
   { id: "users", label: "کاربران و مالی", href: "/admin/users", icon: Users, roles: ["SUPER_ADMIN", "FINANCE_MANAGER"] },
   { id: "wallet-history", label: "تاریخچه کیف پول", href: "/admin/wallet-history", icon: Wallet, roles: ["SUPER_ADMIN", "FINANCE_MANAGER"] },
   { id: "payments", label: "پرداخت‌ها", href: "/admin/payments", icon: Landmark, roles: ["SUPER_ADMIN", "FINANCE_MANAGER"] },
   { id: "activity-log", label: "لاگ فعالیت‌ها", href: "/admin/activity-log", icon: History, roles: ["SUPER_ADMIN", "SUPPORT_AGENT", "FINANCE_MANAGER"] },
+  { id: "sms-logs", label: "کاوه‌نگار (وضعیت پیامک‌ها)", href: "/admin/sms-logs", icon: MessageSquare, roles: ["SUPER_ADMIN", "SUPPORT_AGENT", "FINANCE_MANAGER"] },
   { id: "accommodations", label: "اقامتگاه‌های اختصاصی", href: "/admin/accommodations", icon: Home, roles: ["SUPER_ADMIN", "SUPPORT_AGENT"], tabKey: "accommodations" },
   { id: "blog", label: "مدیریت بلاگ", href: "/admin/blog", icon: Newspaper, roles: ["SUPER_ADMIN", "SUPPORT_AGENT"], tabKey: "blog" },
   { id: "banners", label: "بنر اصلی صفحه اول", href: "/admin/banners", icon: Images, roles: ["SUPER_ADMIN", "SUPPORT_AGENT"], tabKey: "banners" },
-  { id: "bookings", label: "مدیریت رزروها", href: "/admin/bookings", icon: CalendarDays, roles: ["SUPER_ADMIN", "SUPPORT_AGENT"], tabKey: "bookings" },
-  { id: "corporate", label: "سازمانی", href: "/admin/corporate", icon: Building2, roles: ["SUPER_ADMIN", "SUPPORT_AGENT"], tabKey: "corporate" },
+  { id: "site-content-about", label: "متن صفحه درباره ما", href: "/admin/site-content/about", icon: FileEdit, roles: ["SUPER_ADMIN"] },
+  { id: "site-content-terms", label: "متن قوانین و مقررات", href: "/admin/site-content/terms", icon: Scale, roles: ["SUPER_ADMIN"] },
+  { id: "bookings", label: "مدیریت رزروها", href: "/admin/bookings", icon: CalendarDays, roles: ["SUPER_ADMIN", "SUPPORT_AGENT", "FINANCE_MANAGER"], tabKey: "bookings" },
+  { id: "corporate", label: "سازمانی", href: "/admin/corporate", icon: Building2, roles: ["SUPER_ADMIN", "SUPPORT_AGENT", "FINANCE_MANAGER"], tabKey: "corporate" },
   { id: "tickets", label: "مرکز تیکتینگ", href: "/admin/tickets", icon: HeadphonesIcon, roles: ["SUPER_ADMIN", "SUPPORT_AGENT"], tabKey: "tickets" },
-  { id: "logs", label: "لاگ‌های سیستم", href: "/admin/logs", icon: ScrollText, roles: ["SUPER_ADMIN", "SUPPORT_AGENT"], tabKey: "logs" },
+  { id: "logs", label: "لاگ‌های سیستم", href: "/admin/logs", icon: ScrollText, roles: ["SUPER_ADMIN", "SUPPORT_AGENT", "FINANCE_MANAGER"], tabKey: "logs" },
 ];
 
 export default function AdminSidebar({ onClose }: { onClose?: () => void }) {
   const pathname = usePathname();
-  const router = useRouter();
-  const { user, logout } = useAuthStore();
-
-  const handleLogout = async () => {
-    try {
-      await fetch("/api/auth/logout", { method: "POST" });
-    } catch (error) {
-      console.error("Logout error", error);
-    } finally {
-      logout();
-      router.push("/login");
-    }
-  };
+  const { user } = useAuthStore();
 
   if (!user) return null;
 
@@ -149,23 +184,6 @@ export default function AdminSidebar({ onClose }: { onClose?: () => void }) {
           );
         })}
       </nav>
-
-      <div className="p-4 border-t border-white/5 flex flex-col gap-2 shrink-0">
-        <Link
-          href="/"
-          className="flex items-center justify-center gap-2 px-4 py-3 rounded-xl bg-white/5 hover:bg-white/10 text-white text-sm font-bold transition-colors"
-        >
-          <ExternalLink className="w-4 h-4" />
-          بازگشت به سایت
-        </Link>
-        <button
-          onClick={handleLogout}
-          className="flex items-center justify-center gap-2 px-4 py-3 rounded-xl hover:bg-red-500/10 text-red-400 hover:text-red-300 text-sm font-bold transition-colors"
-        >
-          <LogOut className="w-4 h-4" />
-          خروج از پنل
-        </button>
-      </div>
     </aside>
   );
 }

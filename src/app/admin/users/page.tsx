@@ -1,8 +1,19 @@
+
+// مسیر: src/app/admin/users/page.tsx
+//
+// 🆕 تسک ۸ چک‌لیست کارفرما (امکان حذف برای مدیران ارشد): ستون «عملیات» حالا برای
+// مدیر ارشد یک دکمه‌ی حذف هم دارد (در کنار دکمه‌ی مشاهده/ویرایش). این دکمه برای
+// نقش‌های دیگر اصلاً رندر نمی‌شود، برای کاربران با نقش SUPER_ADMIN و برای حسابِ
+// خودِ مدیر ارشدِ واردشده هم پنهان است (سرور هم هر سه حالت را دوباره رد می‌کند).
+// حذف واقعی در DELETE /api/admin/users/[id] انجام می‌شود و با حذف کاربر، تمام
+// داده‌های مرتبط او (کیف پول، رزروها، تیکت‌ها و ...) هم خودکار حذف می‌شوند.
+
 "use client";
 
 import { useEffect, useState } from "react";
 import Link from "next/link";
-import { Search, Loader2, User, ShieldCheck, Briefcase, Eye } from "lucide-react";
+import { Search, Loader2, User, ShieldCheck, Briefcase, Eye, Trash2 } from "lucide-react";
+import { useAuthStore } from "@/store/authStore";
 
 interface AdminUser {
   id: string;
@@ -16,6 +27,10 @@ interface AdminUser {
 }
 
 export default function AdminUsersPage() {
+  // 🆕 تسک ۸: نقش کاربر واردشده برای نمایش/پنهان‌کردن دکمه‌ی حذف (فقط مدیر ارشد)
+  const { user: currentUser } = useAuthStore();
+  const isSuperAdmin = currentUser?.role === "SUPER_ADMIN";
+
   const [users, setUsers] = useState<AdminUser[]>([]);
   const [isLoading, setIsLoading] = useState(true);
   const [search, setSearch] = useState("");
@@ -43,6 +58,29 @@ export default function AdminUsersPage() {
       console.error("Error fetching users:", error);
     } finally {
       setIsLoading(false);
+    }
+  };
+
+  // 🆕 تسک ۸: حذف کامل کاربر توسط مدیر ارشد — هشدار صریح درباره‌ی غیرقابل‌بازگشت
+  // بودن و حذف تمام داده‌های مرتبط، قبل از ارسال درخواست به سرور نمایش داده می‌شود.
+  const handleDeleteUser = async (targetId: string, fullName: string, phone: string) => {
+    if (
+      !confirm(
+        `⚠️ هشدار جدی:\n\nآیا از حذف کامل کاربر «${fullName}» (${phone}) مطمئن هستید؟\n\nبا این کار تمام اطلاعات او — کیف پول و تراکنش‌ها، رزروها، تیکت‌ها و علاقه‌مندی‌ها — برای همیشه حذف می‌شود و قابل بازگشت نیست.`
+      )
+    ) {
+      return;
+    }
+    try {
+      const res = await fetch(`/api/admin/users/${targetId}`, { method: "DELETE" });
+      const data = await res.json();
+      if (data.success) {
+        fetchUsers(search, page);
+      } else {
+        alert(data.error || "خطا در حذف کاربر");
+      }
+    } catch (error) {
+      alert("خطا در ارتباط با سرور");
     }
   };
 
@@ -134,13 +172,26 @@ export default function AdminUsersPage() {
                       {new Date(u.joinedAt).toLocaleDateString("fa-IR")}
                     </td>
                     <td className="px-6 py-4">
-                      <Link
-                        href={`/admin/users/${u.id}`}
-                        className="inline-flex items-center justify-center bg-slate-100 hover:bg-balkun-cyan hover:text-white text-slate-600 p-2 rounded-lg transition-colors"
-                        title="مشاهده و ویرایش"
-                      >
-                        <Eye className="w-4 h-4" />
-                      </Link>
+                      <div className="flex items-center gap-2">
+                        <Link
+                          href={`/admin/users/${u.id}`}
+                          className="inline-flex items-center justify-center bg-slate-100 hover:bg-balkun-cyan hover:text-white text-slate-600 p-2 rounded-lg transition-colors"
+                          title="مشاهده و ویرایش"
+                        >
+                          <Eye className="w-4 h-4" />
+                        </Link>
+                        {/* 🆕 تسک ۸: دکمه‌ی حذف — فقط مدیر ارشد، نه برای مدیران ارشد
+                            دیگر و نه برای حساب خودِ او (سرور هم همین‌ها را رد می‌کند) */}
+                        {isSuperAdmin && u.role !== "SUPER_ADMIN" && u.id !== currentUser?.id && (
+                          <button
+                            onClick={() => handleDeleteUser(u.id, `${u.firstName} ${u.lastName}`, u.phoneNumber)}
+                            className="inline-flex items-center justify-center bg-red-50 hover:bg-red-500 hover:text-white text-red-500 p-2 rounded-lg transition-colors"
+                            title="حذف کامل کاربر (فقط مدیر ارشد)"
+                          >
+                            <Trash2 className="w-4 h-4" />
+                          </button>
+                        )}
+                      </div>
                     </td>
                   </tr>
                 ))
@@ -175,3 +226,4 @@ export default function AdminUsersPage() {
     </div>
   );
 }
+

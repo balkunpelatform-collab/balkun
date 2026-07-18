@@ -1,8 +1,15 @@
 "use client";
 
+// 🆕 بهبود تجربه‌ی کاربری (درخواست کارفرما): نوار بالای صفحه که قبلاً فقط در
+// موبایل بود و فقط عنوان ثابت پنل را نشان می‌داد ("Mobile Topbar")، با کامپوننت
+// جدید AdminHeader جایگزین شد که هم در موبایل و هم در دسکتاپ نمایش داده می‌شود و
+// شامل دکمه‌های «بازگشت به سایت» و «خروج از پنل» است — این دو دکمه قبلاً فقط
+// پایین سایدبار بودند و کاربر مجبور بود برای رسیدن به آن‌ها اسکرول کند.
+
 import { useState } from "react";
-import { Menu, X } from "lucide-react";
+import { X } from "lucide-react";
 import AdminSidebar from "@/components/admin/AdminSidebar";
+import AdminHeader from "@/components/admin/AdminHeader";
 
 export default function AdminLayout({ children }: { children: React.ReactNode }) {
   const [mobileMenuOpen, setMobileMenuOpen] = useState(false);
@@ -35,16 +42,8 @@ export default function AdminLayout({ children }: { children: React.ReactNode })
       {/* Main Content Area */}
       <div className="flex-1 flex flex-col h-full overflow-hidden relative">
         
-        {/* Mobile Topbar */}
-        <div className="md:hidden h-16 bg-white border-b border-slate-200 px-4 flex items-center justify-between shrink-0 z-10">
-          <span className="font-black text-balkun-navy">پنل مدیریت بالکن</span>
-          <button 
-            onClick={() => setMobileMenuOpen(true)}
-            className="p-2 bg-slate-100 rounded-xl text-slate-700 hover:bg-slate-200"
-          >
-            <Menu className="w-5 h-5" />
-          </button>
-        </div>
+        {/* هدر بالای صفحه — حالا هم در دسکتاپ و هم موبایل نمایش داده می‌شود (قبلاً فقط موبایل) */}
+        <AdminHeader onMenuClick={() => setMobileMenuOpen(true)} />
 
         {/* Page Content */}
         <main className="flex-1 overflow-y-auto p-4 md:p-8 bg-slate-50/50">

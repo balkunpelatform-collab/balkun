@@ -7,10 +7,19 @@
 //
 // 🆕 اصلاح مورد ۱ (۲۰۲۶/۰۷/۱۱): "EXPIRED" به VALID_STATUSES اضافه شد تا فیلتر وضعیت
 // در پنل ادمین بتواند رزروهای منقضی‌شده (عدم پرداخت در مهلت) را هم نشان دهد.
+//
+// 🆕 تسک ۱۱ چک‌لیست کارفرما (افزودن نقش مدیر مالی به سیستم): نقش FINANCE_MANAGER هم
+// حالا به همین GET (فقط-خواندنی/فقط لیست) دسترسی دارد تا بتواند رزروها را ببیند —
+// دقیقاً به همان شکلی که به لیست کاربران (src/app/api/admin/users/route.ts) دسترسی
+// گرفت. عمداً از requireAdminTabAccess برای این نقش استفاده نشده (چون آن تابع دقیقاً
+// همان چک‌باکس PATCH/DELETE این تب را هم کنترل می‌کند)؛ به‌جایش یک مسیر دوم و مستقل
+// اضافه شد که فقط همین GET را باز می‌کند. لغو (PATCH) و حذف (DELETE) رزرو در فایل
+// bookings/[id]/route.ts دست‌نخورده باقی ماندند و همچنان فقط برای SUPER_ADMIN و
+// SUPPORT_AGENTِ دارای دسترسی تب "bookings" فعال‌اند — مدیر مالی فقط می‌بیند.
 
 import { NextRequest, NextResponse } from "next/server";
 import { supabaseAdmin } from "@/lib/supabase-admin";
-import { requireAdminTabAccess } from "@/lib/auth/adminAuth";
+import { requireAdminRole, requireAdminTabAccess } from "@/lib/auth/adminAuth";
 import type { BookingStatus } from "@/types/database";
 
 const VALID_STATUSES: BookingStatus[] = [
@@ -23,7 +32,15 @@ const VALID_STATUSES: BookingStatus[] = [
 ];
 
 export async function GET(request: NextRequest) {
-  const admin = await requireAdminTabAccess(request, "bookings");
+  let admin = await requireAdminTabAccess(request, "bookings");
+
+  // 🆕 تسک ۱۱: مسیر دسترسیِ دوم و فقط-خواندنی مخصوص FINANCE_MANAGER. این نقش هرگز
+  // از سیستم تفویض تب SUPPORT_AGENT عبور نمی‌کند (چون همان requireAdminTabAccess،
+  // PATCH/DELETE همین تب را هم کنترل می‌کند)؛ این‌جا صرفاً یک اجازه‌ی جداگانه برای GET.
+  if (!admin) {
+    admin = await requireAdminRole(request, ["FINANCE_MANAGER"]);
+  }
+
   if (!admin) {
     return NextResponse.json({ success: false, error: "دسترسی غیرمجاز" }, { status: 403 });
   }

@@ -1,3 +1,4 @@
+
 // مسیر: src/app/admin/activity-log/page.tsx
 //
 // 🆕 تسک ۲ چک‌لیست کارفرما (نمایش لاگ فعالیت‌های پشتیبانی، مالی و مدیر ارشد):
@@ -9,13 +10,21 @@
 // نمایش می‌دهد: هر کارمند چه کاری انجام داده، روی کدام کاربر/رزرو/تیکت/کیف پول،
 // در چه زمانی، و با چه نتیجه‌ای (وضعیت قبل → بعد) — دقیقاً طبق مورد ۲ فایل
 // درخواست‌های کارفرما.
+//
+// 🆕 تسک ۸ چک‌لیست کارفرما (امکان حذف برای مدیران ارشد): یک ستون «حذف» فقط برای
+// مدیر ارشد اضافه شد تا هر ردیف لاگ قابل پاک‌سازی باشد (DELETE /api/admin/activity-log?id=...
+// که آن هم فقط SUPER_ADMIN را می‌پذیرد). پشتیبان و مدیر مالی هیچ دکمه‌ی حذفی نمی‌بینند.
+// همچنین لیست برچسب‌های ACTION_LABELS با انواع اضافه‌شده در تسک‌های ۷/۱۳/۱۸
+// (ORGANIZATION_CHANGE، BANNER_CHANGE، SITE_CONTENT_CHANGE) و دو نوع جدید این تسک
+// (USER_DELETE، TICKET_DELETE) همگام‌سازی شد تا فیلتر و نمایش همه‌ی انواع درست کار کند.
 
 "use client";
 
 import { useEffect, useState } from "react";
-import { Loader2, History, Filter, User, ArrowRight } from "lucide-react";
+import { Loader2, History, Filter, User, ArrowRight, Trash2 } from "lucide-react";
 import { useAuthStore } from "@/store/authStore";
 
+// 🆕 تسک ۸: این لیست با تایپ AdminActionType در src/types/database.ts همگام شد
 type AdminActionType =
   | "ROLE_CHANGE"
   | "WALLET_ADJUST"
@@ -28,6 +37,11 @@ type AdminActionType =
   | "CORPORATE_NUMBER_CHANGE"
   | "TICKET_REPLY"
   | "TICKET_STATUS_CHANGE"
+  | "ORGANIZATION_CHANGE"
+  | "BANNER_CHANGE"
+  | "SITE_CONTENT_CHANGE"
+  | "USER_DELETE"
+  | "TICKET_DELETE"
   | "OTHER";
 
 const ACTION_LABELS: Record<AdminActionType, string> = {
@@ -42,6 +56,11 @@ const ACTION_LABELS: Record<AdminActionType, string> = {
   CORPORATE_NUMBER_CHANGE: "تغییر شماره سازمانی",
   TICKET_REPLY: "پاسخ به تیکت",
   TICKET_STATUS_CHANGE: "تغییر وضعیت تیکت",
+  ORGANIZATION_CHANGE: "تغییر در سازمان",
+  BANNER_CHANGE: "تغییر بنر صفحه اول",
+  SITE_CONTENT_CHANGE: "ویرایش محتوای سایت",
+  USER_DELETE: "حذف کاربر",
+  TICKET_DELETE: "حذف تیکت",
   OTHER: "سایر موارد",
 };
 
@@ -120,6 +139,24 @@ export default function AdminActivityLogPage() {
       console.error("Error fetching activity log:", error);
     } finally {
       setIsLoading(false);
+    }
+  };
+
+  // 🆕 تسک ۸: حذف یک ردیف لاگ توسط مدیر ارشد — هشدار غیرقابل‌بازگشت بودن پیش از ارسال
+  const handleDeleteLog = async (logId: string) => {
+    if (!confirm("آیا از حذف این ردیف لاگ مطمئن هستید؟\n\nاین عمل قابل بازگشت نیست.")) {
+      return;
+    }
+    try {
+      const res = await fetch(`/api/admin/activity-log?id=${logId}`, { method: "DELETE" });
+      const data = await res.json();
+      if (data.success) {
+        fetchLogs();
+      } else {
+        alert(data.error || "خطا در حذف لاگ");
+      }
+    } catch (error) {
+      alert("خطا در ارتباط با سرور");
     }
   };
 
@@ -227,19 +264,20 @@ export default function AdminActivityLogPage() {
                 <th className="px-6 py-4 w-1/3">شرح اقدام</th>
                 <th className="px-6 py-4">روی کاربر</th>
                 <th className="px-6 py-4">نتیجه (قبل ← بعد)</th>
+                {isSuperAdmin && <th className="px-6 py-4">حذف</th>}
               </tr>
             </thead>
             <tbody className="divide-y divide-slate-100">
               {isLoading && logs.length === 0 ? (
                 <tr>
-                  <td colSpan={isSuperAdmin ? 6 : 5} className="px-6 py-12 text-center">
+                  <td colSpan={isSuperAdmin ? 7 : 5} className="px-6 py-12 text-center">
                     <Loader2 className="w-6 h-6 text-balkun-cyan animate-spin mx-auto mb-2" />
                     <span className="text-slate-500 font-bold">در حال بارگذاری...</span>
                   </td>
                 </tr>
               ) : logs.length === 0 ? (
                 <tr>
-                  <td colSpan={isSuperAdmin ? 6 : 5} className="px-6 py-12 text-center text-slate-500 font-bold">
+                  <td colSpan={isSuperAdmin ? 7 : 5} className="px-6 py-12 text-center text-slate-500 font-bold">
                     هنوز فعالیتی ثبت نشده است
                   </td>
                 </tr>
@@ -305,6 +343,18 @@ export default function AdminActivityLogPage() {
                         <span className="text-slate-400">—</span>
                       )}
                     </td>
+                    {/* 🆕 تسک ۸: دکمه‌ی حذف ردیف لاگ — فقط مدیر ارشد */}
+                    {isSuperAdmin && (
+                      <td className="px-6 py-4">
+                        <button
+                          onClick={() => handleDeleteLog(log.id)}
+                          className="inline-flex items-center justify-center bg-red-50 hover:bg-red-500 hover:text-white text-red-500 p-2 rounded-lg transition-colors"
+                          title="حذف این لاگ (فقط مدیر ارشد)"
+                        >
+                          <Trash2 className="w-3.5 h-3.5" />
+                        </button>
+                      </td>
+                    )}
                   </tr>
                 ))
               )}
@@ -338,3 +388,4 @@ export default function AdminActivityLogPage() {
     </div>
   );
 }
+

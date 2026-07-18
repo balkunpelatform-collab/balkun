@@ -4,6 +4,15 @@
 // که مهلت پرداخت رزرو (PAYMENT_DEADLINE_MINUTES) هنوز نگذشته باشد. اگر گذشته باشد،
 // رزرو را همان لحظه به EXPIRED تغییر می‌دهیم و پیام روشنی به کاربر می‌دهیم — در غیر
 // این صورت کاربر به درگاه هدایت می‌شد ولی رزروش دیگر معتبر نبود.
+//
+// 🆕 تسک ۲۷ چک‌لیست کارفرما (منطق پرداخت ترکیبی کیف پول + درگاه): اگر کاربر قبلاً
+// از طریق src/app/api/user/bookings/[id]/pay-partial-wallet/route.ts بخشی از مبلغ
+// این رزرو را از کیف پول (شخصی یا مشترک سازمانی) پرداخت کرده باشد (ستون
+// bookings.walletAmountApplied)، دیگر مبلغ کامل رزرو از درگاه گرفته نمی‌شود؛ فقط
+// و فقط مبلغ باقیمانده (totalPaidAmount - walletAmountApplied) محاسبه و از کاربر
+// درخواست می‌شود. این تغییر روی مسیر «پرداخت آنلاین» معمولی (وقتی هیچ پیش‌پرداختی
+// از کیف پول انجام نشده) هیچ تاثیری ندارد، چون walletAmountApplied آن‌ها همیشه صفر
+// است.
 
 import { NextRequest, NextResponse } from "next/server";
 import { supabaseAdmin } from "@/lib/supabase-admin";
@@ -51,8 +60,17 @@ export async function POST(req: NextRequest) {
         return NextResponse.json({ success: false, error: "این رزرو قابل پرداخت نیست" }, { status: 400 });
       }
 
-      // امنیت: مبلغ را از دیتابیس می‌گیریم تا قابل دستکاری نباشد
-      finalAmount = Number(booking.totalPaidAmount);
+      // امنیت: مبلغ را از دیتابیس می‌گیریم تا قابل دستکاری نباشد.
+      // 🆕 تسک ۲۷: اگر بخشی از مبلغ قبلاً از کیف پول کسر شده (پرداخت ترکیبی)، فقط
+      // باقیمانده از کاربر گرفته می‌شود — نه کل مبلغ رزرو.
+      finalAmount = Number(booking.totalPaidAmount) - Number(booking.walletAmountApplied || 0);
+
+      if (finalAmount <= 0) {
+        return NextResponse.json(
+          { success: false, error: "این رزرو قبلاً به‌طور کامل از کیف پول تسویه شده است. لطفاً صفحه را رفرش کنید." },
+          { status: 400 }
+        );
+      }
     }
     // ۲. پردازش شارژ کیف پول
     else if (type === "WALLET_CHARGE") {

@@ -1,3 +1,4 @@
+
 // مسیر: src/app/api/admin/tickets/[id]/route.ts
 // جزئیات یک تیکت برای ادمین + پاسخ‌دهی + بستن تیکت.
 // برخلاف api/support/tickets/[id]/route.ts (نسخه کاربر)، اینجا مالکیت تیکت چک نمی‌شود
@@ -16,10 +17,16 @@
 // موفق بوده) هرگز شکست نمی‌خورد و فقط خطا در کنسول سرور لاگ می‌شود.
 // 🆕 تسک ۱۵ چک‌لیست کارفرما (نمایش زنگوله‌ی هدر واقعی): در همان try/catch، یک اعلان
 // درون‌برنامه‌ای هم برای کاربر ثبت می‌شود تا با کلیک روی آن مستقیم به همین تیکت برود.
+// 🆕 تسک ۸ چک‌لیست کارفرما (امکان حذف برای مدیران ارشد): متد DELETE به همین روت
+// اضافه شد — فقط و فقط SUPER_ADMIN (عمداً با requireAdminRole، نه تب‌های تفویضی،
+// تا پشتیبان حتی با داشتن دسترسی تب تیکتینگ هم نتواند تیکتی را حذف کند). به لطف
+// قید ON DELETE CASCADE روی ticket_messages.ticketId، تمام پیام‌های تیکت هم
+// خودکار حذف می‌شوند. هر حذف موفق با actionType جدید TICKET_DELETE در
+// admin_audit_logs ثبت می‌شود (بند ۲۳ سند DATABASE_SQL_LOG.md).
 
 import { NextRequest, NextResponse } from "next/server";
 import { supabaseAdmin } from "@/lib/supabase-admin";
-import { requireAdminTabAccess, logAdminAction } from "@/lib/auth/adminAuth";
+import { requireAdminRole, requireAdminTabAccess, logAdminAction } from "@/lib/auth/adminAuth";
 import { sendTicketReplySms } from "@/lib/sms/smsService";
 import { createNotification } from "@/lib/notifications/notificationService";
 
@@ -195,4 +202,48 @@ export async function PATCH(request: NextRequest, { params }: RouteContext) {
   });
 
   return NextResponse.json({ success: true, ticket: updatedTicket });
+}
+
+// 🆕 تسک ۸ چک‌لیست کارفرما — DELETE: حذف کامل یک تیکت به‌همراه تمام پیام‌هایش
+// (فقط مدیر ارشد). برخلاف GET/POST/PATCH که با تب تفویضی "tickets" کنترل می‌شوند،
+// حذف عمداً فقط با requireAdminRole(["SUPER_ADMIN"]) است تا هیچ پشتیبانی —
+// حتی با دسترسی کامل تب تیکتینگ — نتواند سابقه‌ی گفتگو با کاربر را پاک کند.
+export async function DELETE(request: NextRequest, { params }: RouteContext) {
+  const admin = await requireAdminRole(request, ["SUPER_ADMIN"]);
+  if (!admin) {
+    return NextResponse.json({ success: false, error: "دسترسی غیرمجاز" }, { status: 403 });
+  }
+
+  const { id: ticketId } = await params;
+
+  const { data: ticket, error: fetchError } = await supabaseAdmin
+    .from("tickets")
+    .select("id, userId, subject, status")
+    .eq("id", ticketId)
+    .maybeSingle();
+
+  if (fetchError || !ticket) {
+    return NextResponse.json({ success: false, error: "تیکت یافت نشد" }, { status: 404 });
+  }
+
+  // حذف تیکت — پیام‌هایش به لطف ON DELETE CASCADE خودکار حذف می‌شوند
+  const { error: deleteError } = await supabaseAdmin.from("tickets").delete().eq("id", ticketId);
+
+  if (deleteError) {
+    console.error("Admin Ticket Delete Error:", deleteError);
+    return NextResponse.json({ success: false, error: "خطا در حذف تیکت" }, { status: 500 });
+  }
+
+  // ثبت اجباری در لاگ ممیزی — مشخص می‌کند کدام مدیر ارشد، کدام تیکتِ کدام کاربر
+  // را و در چه وضعیتی حذف کرده است.
+  await logAdminAction({
+    adminId: admin.userId,
+    actionType: "TICKET_DELETE",
+    targetUserId: ticket.userId,
+    description: `حذف کامل تیکت «${ticket.subject}» (شناسه تیکت: ${ticketId}) به‌همراه تمام پیام‌هایش توسط مدیر ارشد.`,
+    previousValue: ticket.status,
+    newValue: "DELETED",
+  });
+
+  return NextResponse.json({ success: true, message: "تیکت با موفقیت حذف شد" });
 }

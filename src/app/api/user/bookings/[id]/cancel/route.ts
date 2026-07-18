@@ -3,6 +3,12 @@
 // 🆕 تسک ۱۵ چک‌لیست کارفرما (نمایش زنگوله‌ی هدر واقعی): بعد از لغو موفق رزرو،
 // علاوه بر پیامک، یک اعلان درون‌برنامه‌ای هم برای همان کاربر ثبت می‌شود تا در
 // تاریخچه‌ی زنگوله‌ی هدرش هم بماند.
+//
+// 🆕 تسک ۲۷ چک‌لیست کارفرما (منطق پرداخت ترکیبی کیف پول + درگاه): اگر رزرویی که
+// لغو می‌شود هنوز «قطعی» نشده باشد ولی بخشی از مبلغش را طی پرداخت ترکیبی از کیف
+// پول (شخصی یا مشترک سازمانی) پیش‌کسر کرده باشد (bookings.walletAmountApplied)،
+// همان مبلغ باید عودت داده شود — وگرنه با لغو رزرو، آن مبلغ بدون دلیل از کاربر
+// گرفته می‌ماند. این بخش با تابع مشترک refundAppliedWalletAmount انجام می‌شود.
 
 import { NextRequest, NextResponse } from "next/server";
 import { supabaseAdmin } from "@/lib/supabase-admin";
@@ -10,6 +16,7 @@ import { sendBookingCancelledSms, sendRefundSms } from "@/lib/sms/smsService";
 import { createNotification } from "@/lib/notifications/notificationService";
 import { formatPrice } from "@/utils/priceCalculator";
 import { CANCELLATION_DEADLINE_HOURS } from "@/constants/booking";
+import { refundAppliedWalletAmount } from "@/lib/wallet/refundAppliedWalletAmount";
 
 export async function POST(
   req: NextRequest,
@@ -40,6 +47,9 @@ export async function POST(
     }
 
     const wasPaidConfirmed = booking.status === "PAID_CONFIRMED";
+    // 🆕 تسک ۲۷: این رزرو هنوز قطعی نشده، اما بخشی از مبلغش قبلاً طی پرداخت ترکیبی
+    // از کیف پول کسر شده (منتظر تکمیل باقیمانده از درگاه بود که حالا لغو می‌شود)
+    const hadPartialWalletPrepayment = !wasPaidConfirmed && Number(booking.walletAmountApplied || 0) > 0;
 
     // 🆕 تسک ۱.۶ — بررسی مهلت زمانی لغو رایگان برای رزروهای قطعی‌شده (پرداخت‌شده).
     // رزروهای «در انتظار پرداخت» هیچ محدودیت زمانی ندارند چون هنوز مبلغی از
@@ -91,6 +101,17 @@ export async function POST(
       }
     }
 
+    // 🆕 تسک ۲۷: اگر این رزرو (که هنوز قطعی نشده) بخشی از مبلغش را طی پرداخت
+    // ترکیبی از کیف پول پیش‌کسر کرده بود، همان مبلغ عودت داده می‌شود.
+    if (hadPartialWalletPrepayment) {
+      await refundAppliedWalletAmount({
+        id: booking.id,
+        userId: booking.userId,
+        walletAmountApplied: booking.walletAmountApplied,
+        walletTypeApplied: booking.walletTypeApplied,
+      });
+    }
+
     // ۳. تغییر وضعیت رزرو به لغوشده
     await supabaseAdmin
       .from("bookings")
@@ -109,6 +130,9 @@ export async function POST(
         await sendBookingCancelledSms(guestUser.phoneNumber, guestUser.firstName, booking.roomName, "GUEST");
         if (wasPaidConfirmed) {
           await sendRefundSms(guestUser.phoneNumber, guestUser.firstName, formatPrice(booking.totalPaidAmount));
+        } else if (hadPartialWalletPrepayment) {
+          // 🆕 تسک ۲۷: اطلاع‌رسانی عودت همان مبلغی که پیش‌تر از کیف پول کسر شده بود
+          await sendRefundSms(guestUser.phoneNumber, guestUser.firstName, formatPrice(Number(booking.walletAmountApplied || 0)));
         }
       }
 
@@ -119,6 +143,8 @@ export async function POST(
         title: "رزرو شما لغو شد",
         message: wasPaidConfirmed
           ? `رزرو «${booking.roomName}» طبق درخواست شما لغو شد و مبلغ پرداختی به کیف پول شما بازگردانده شد.`
+          : hadPartialWalletPrepayment
+          ? `رزرو «${booking.roomName}» طبق درخواست شما لغو شد و مبلغ ${formatPrice(Number(booking.walletAmountApplied || 0))} تومانی که از کیف پول شما کسر شده بود، به کیف پولتان بازگردانده شد.`
           : `رزرو «${booking.roomName}» طبق درخواست شما لغو شد.`,
         linkUrl: "/profile?tab=bookings",
       });
@@ -128,7 +154,13 @@ export async function POST(
 
     return NextResponse.json({
       success: true,
-      message: "رزرو با موفقیت لغو شد" + (wasPaidConfirmed ? " و مبلغ به کیف پول شما عودت داده شد." : "."),
+      message:
+        "رزرو با موفقیت لغو شد" +
+        (wasPaidConfirmed
+          ? " و مبلغ به کیف پول شما عودت داده شد."
+          : hadPartialWalletPrepayment
+          ? ` و مبلغ ${formatPrice(Number(booking.walletAmountApplied || 0))} تومانی که از کیف پول شما کسر شده بود، به کیف پولتان بازگردانده شد.`
+          : "."),
     });
   } catch (error) {
     console.error("Cancel Booking Error:", error);

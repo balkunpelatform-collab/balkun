@@ -18,6 +18,14 @@
 // هم در نظر گرفته می‌شود: اگر سازمان غیرفعال شده باشد، گزینه‌ی کیف پول سازمانی با پیام
 // روشن «غیرفعال شده» نمایش داده می‌شود (نه فقط «کافی نیست»)، و انتخاب/پرداخت از آن مسدود
 // می‌شود — دقیقاً همان رفتاری که در Route Handler پرداخت هم اعمال شده.
+//
+// 🆕 تسک ۲۷ چک‌لیست کارفرما (منطق پرداخت ترکیبی کیف پول + درگاه): اگر موجودی کیف پول
+// انتخاب‌شده کمتر از مبلغ باقیمانده‌ی رزرو باشد ولی صفر نباشد، یک دکمه‌ی «پرداخت ترکیبی»
+// اضافه شده که ابتدا همان مبلغ موجود را از کیف پول کسر می‌کند (از طریق روت جدید
+// api/user/bookings/[id]/pay-partial-wallet) و بلافاصله کاربر را برای پرداخت فقط
+// باقیمانده به درگاه بانکی هدایت می‌کند — به‌جای اینکه یا منتظر شارژ کامل کیف پول بماند،
+// یا کل مبلغ رزرو دوباره از درگاه کسر شود. «مبلغ قابل پرداخت» در این مودال هم از این پس
+// amountDue (یعنی totalPaidAmount منهای هر مبلغی که قبلاً اعمال شده) است، نه کل مبلغ رزرو.
 
 "use client";
 
@@ -125,8 +133,10 @@ export default function BookingCard({ booking }: { booking: Booking }) {
         };
         setOrganizationInfo(orgInfo);
         setWalletBalances(balances);
+        // 🆕 تسک ۲۷: مقایسه با مبلغ باقیمانده (amountDue)، نه کل مبلغ رزرو
+        const amountDueNow = Number(booking.totalPaidAmount) - Number(booking.walletAmountApplied || 0);
         // پیش‌فرض هوشمند: اگر کاربر سازمانی است، سازمانش فعال است و موجودی سازمانی کافی دارد، همان انتخاب شود
-        if (isOrganizational && orgInfo?.isActive && balances.orgBalance >= booking.totalPaidAmount) {
+        if (isOrganizational && orgInfo?.isActive && balances.orgBalance >= amountDueNow) {
           setSelectedWalletType("ORGANIZATIONAL");
         } else {
           setSelectedWalletType("NORMAL");
@@ -164,6 +174,38 @@ export default function BookingCard({ booking }: { booking: Booking }) {
     }
   };
 
+  // 🆕 تسک ۲۷ — پرداخت ترکیبی: ابتدا هر چقدر از کیف پول انتخاب‌شده در دسترس است کسر
+  // می‌شود، سپس کاربر برای پرداخت فقط باقیمانده به درگاه هدایت می‌شود.
+  const handleCombinedPayment = async () => {
+    setIsPayingWithWallet(true);
+    setWalletError("");
+    try {
+      const res = await fetch(`/api/user/bookings/${booking.id}/pay-partial-wallet`, {
+        method: "POST",
+        headers: { "Content-Type": "application/json" },
+        body: JSON.stringify({ walletType: selectedWalletType }),
+      });
+      const data = await res.json();
+      if (data.success) {
+        if (data.fullyPaid) {
+          window.location.reload(); // موجودی کیف پول کل مبلغ باقیمانده را پوشش داد؛ رزرو قطعی شد
+          return;
+        }
+        // بخشی از مبلغ از کیف پول کسر شد؛ حالا برای باقیمانده به درگاه هدایت می‌شویم.
+        // handlePayment مبلغ را از سرور و بر اساس مقدار به‌روزشده‌ی walletAmountApplied
+        // دوباره محاسبه می‌کند، پس نیازی به محاسبه‌ی دستی باقیمانده در همین‌جا نیست.
+        setIsWalletModalOpen(false);
+        await handlePayment();
+      } else {
+        setWalletError(data.error || "پرداخت ترکیبی ناموفق بود");
+        setIsPayingWithWallet(false);
+      }
+    } catch {
+      setWalletError("خطای شبکه. لطفاً دوباره تلاش کنید.");
+      setIsPayingWithWallet(false);
+    }
+  };
+
   // هندلر لغو رزرو
   const handleCancel = async () => {
     if (!confirm("آیا از لغو این رزرو اطمینان دارید؟ در صورت پرداخت، مبلغ به کیف پول شما عودت داده می‌شود.")) return;
@@ -184,15 +226,27 @@ export default function BookingCard({ booking }: { booking: Booking }) {
     }
   };
 
+  // 🆕 تسک ۲۷: مبلغ واقعاً قابل پرداخت این رزرو — اگر قبلاً بخشی از کیف پول کسر
+  // شده باشد (پرداخت ترکیبی)، این مقدار کمتر از totalPaidAmount خواهد بود.
+  const amountDue = Math.max(0, Number(booking.totalPaidAmount) - Number(booking.walletAmountApplied || 0));
+
   const selectedBalance = walletBalances
     ? (selectedWalletType === "ORGANIZATIONAL" ? walletBalances.orgBalance : walletBalances.normalBalance)
     : 0;
   // 🔧 اصلاح تسک ۷: اگر کیف پول سازمانی انتخاب شده، علاوه بر کافی‌بودن موجودی، سازمان هم باید فعال باشد
+  // 🆕 تسک ۲۷: مقایسه با amountDue (مبلغ باقیمانده)، نه کل مبلغ رزرو
   const hasEnoughBalance = walletBalances
     ? selectedWalletType === "ORGANIZATIONAL"
-      ? Boolean(organizationInfo?.isActive) && selectedBalance >= booking.totalPaidAmount
-      : selectedBalance >= booking.totalPaidAmount
+      ? Boolean(organizationInfo?.isActive) && selectedBalance >= amountDue
+      : selectedBalance >= amountDue
     : false;
+  // 🆕 تسک ۲۷: آیا امکان پرداخت ترکیبی وجود دارد؟ یعنی موجودی کیف پول انتخاب‌شده
+  // بیشتر از صفر است ولی به‌تنهایی کل مبلغ باقیمانده را پوشش نمی‌دهد
+  const canPayCombined =
+    walletBalances !== null &&
+    selectedBalance > 0 &&
+    selectedBalance < amountDue &&
+    !(selectedWalletType === "ORGANIZATIONAL" && !organizationInfo?.isActive);
 
   return (
     <div className="border border-slate-100 rounded-2xl p-4 md:p-5 hover:border-balkun-cyan/30 transition-colors shadow-sm flex flex-col gap-4">
@@ -228,11 +282,18 @@ export default function BookingCard({ booking }: { booking: Booking }) {
             ) : (
               <div className="flex flex-col gap-4">
                 <div className="flex justify-between items-center bg-slate-50 rounded-xl p-4 border border-slate-100">
-                  <span className="text-xs font-bold text-slate-500">مبلغ قابل پرداخت</span>
+                  <span className="text-xs font-bold text-slate-500">مبلغ باقیمانده قابل پرداخت</span>
                   <span className="text-base font-black text-balkun-navy">
-                    {formatPrice(booking.totalPaidAmount)} <span className="text-[10px] font-bold text-slate-400">تومان</span>
+                    {formatPrice(amountDue)} <span className="text-[10px] font-bold text-slate-400">تومان</span>
                   </span>
                 </div>
+
+                {/* 🆕 تسک ۲۷: اگر قبلاً بخشی از این رزرو با پرداخت ترکیبی از کیف پول کسر شده */}
+                {Number(booking.walletAmountApplied || 0) > 0 && (
+                  <p className="text-[10px] font-bold text-slate-400 -mt-2 leading-relaxed">
+                    تاکنون {formatPrice(Number(booking.walletAmountApplied || 0))} تومان از مبلغ کل این رزرو ({formatPrice(booking.totalPaidAmount)} تومان) از کیف پول شما کسر شده است.
+                  </p>
+                )}
 
                 {walletBalances && (
                   <div className="flex flex-col gap-2">
@@ -241,7 +302,7 @@ export default function BookingCard({ booking }: { booking: Booking }) {
                       disabled={isPayingWithWallet}
                       className={`w-full text-right rounded-xl border-2 p-3.5 transition-colors flex items-center justify-between gap-3 ${
                         selectedWalletType === "NORMAL" ? "border-balkun-cyan bg-balkun-cyan/5" : "border-slate-100"
-                      } ${walletBalances.normalBalance < booking.totalPaidAmount ? "opacity-60" : ""}`}
+                      } ${walletBalances.normalBalance < amountDue ? "opacity-60" : ""}`}
                     >
                       <div className="flex flex-col items-start gap-0.5">
                         <span className="text-xs font-black text-slate-700">کیف پول عادی</span>
@@ -249,7 +310,7 @@ export default function BookingCard({ booking }: { booking: Booking }) {
                           موجودی: {formatPrice(walletBalances.normalBalance)} تومان
                         </span>
                       </div>
-                      {walletBalances.normalBalance < booking.totalPaidAmount && (
+                      {walletBalances.normalBalance < amountDue && (
                         <span className="text-[10px] font-bold text-red-500 shrink-0">کافی نیست</span>
                       )}
                     </button>
@@ -269,7 +330,7 @@ export default function BookingCard({ booking }: { booking: Booking }) {
                         className={`w-full text-right rounded-xl border-2 p-3.5 transition-colors flex items-center justify-between gap-3 ${
                           selectedWalletType === "ORGANIZATIONAL" ? "border-balkun-orange bg-balkun-orange/5" : "border-slate-100"
                         } ${
-                          !organizationInfo?.isActive || walletBalances.orgBalance < booking.totalPaidAmount
+                          !organizationInfo?.isActive || walletBalances.orgBalance < amountDue
                             ? "opacity-60"
                             : ""
                         }`}
@@ -285,7 +346,7 @@ export default function BookingCard({ booking }: { booking: Booking }) {
                         {!organizationInfo ? null : !organizationInfo.isActive ? (
                           <span className="text-[10px] font-bold text-red-500 shrink-0">غیرفعال شده</span>
                         ) : (
-                          walletBalances.orgBalance < booking.totalPaidAmount && (
+                          walletBalances.orgBalance < amountDue && (
                             <span className="text-[10px] font-bold text-red-500 shrink-0">کافی نیست</span>
                           )
                         )}
@@ -309,7 +370,9 @@ export default function BookingCard({ booking }: { booking: Booking }) {
                   <div className="bg-balkun-yellow/10 border border-balkun-yellow/20 rounded-xl p-3 flex gap-2.5">
                     <AlertTriangle className="w-4 h-4 text-balkun-yellow shrink-0 mt-0.5" />
                     <p className="text-[11px] font-bold text-slate-600 leading-relaxed">
-                      موجودی این کیف پول کافی نیست. می‌توانید ابتدا از بخش «کیف پول» موجودی را افزایش دهید یا از پرداخت آنلاین استفاده کنید.
+                      {canPayCombined
+                        ? "موجودی این کیف پول کافی نیست، اما می‌توانید همین موجودی را کسر کنید و فقط باقیمانده را از درگاه بانکی پرداخت کنید (پرداخت ترکیبی)."
+                        : "موجودی این کیف پول کافی نیست. می‌توانید ابتدا از بخش «کیف پول» موجودی را افزایش دهید یا از پرداخت آنلاین استفاده کنید."}
                     </p>
                   </div>
                 )}
@@ -320,6 +383,23 @@ export default function BookingCard({ booking }: { booking: Booking }) {
                   </div>
                 )}
 
+                {/* 🆕 تسک ۲۷ — دکمه‌ی پرداخت ترکیبی: کسر کل موجودی کیف پول + هدایت به درگاه برای باقیمانده */}
+                {canPayCombined && (
+                  <button
+                    onClick={handleCombinedPayment}
+                    disabled={isPayingWithWallet || isProcessing}
+                    className="w-full bg-balkun-orange hover:bg-balkun-orange-dark text-white font-bold py-3.5 rounded-xl transition-all shadow-lg shadow-balkun-orange/20 disabled:opacity-50 flex items-center justify-center gap-2 text-center"
+                  >
+                    {isPayingWithWallet ? (
+                      <Loader2 className="w-5 h-5 animate-spin" />
+                    ) : (
+                      <span>
+                        پرداخت ترکیبی: {formatPrice(selectedBalance)} از کیف پول + {formatPrice(amountDue - selectedBalance)} از درگاه
+                      </span>
+                    )}
+                  </button>
+                )}
+
                 <button
                   onClick={handleWalletPayment}
                   disabled={isPayingWithWallet || !hasEnoughBalance}
@@ -328,7 +408,7 @@ export default function BookingCard({ booking }: { booking: Booking }) {
                   {isPayingWithWallet ? <Loader2 className="w-5 h-5 animate-spin" /> : "تایید و پرداخت از کیف پول"}
                 </button>
 
-                {!hasEnoughBalance && selectedWalletType === "NORMAL" && (
+                {!hasEnoughBalance && !canPayCombined && selectedWalletType === "NORMAL" && (
                   <Link
                     href="/profile?tab=wallet"
                     className="text-center text-[11px] font-bold text-balkun-cyan hover:underline -mt-1"
@@ -435,6 +515,12 @@ export default function BookingCard({ booking }: { booking: Booking }) {
         <div className="flex flex-col">
           <span className="text-[10px] font-bold text-slate-400 flex items-center gap-1 mb-1"><Receipt className="w-3 h-3" /> مبلغ پرداختی</span>
           <span className="text-sm font-black text-balkun-cyan">{formatPrice(booking.totalPaidAmount)} <span className="text-[9px] font-bold text-slate-500">تومان</span></span>
+          {/* 🆕 تسک ۲۷: اگر بخشی از این رزرو با پرداخت ترکیبی از کیف پول کسر شده، همین‌جا هم مشخص شود */}
+          {booking.status === "WAITING_FOR_PAYMENT" && Number(booking.walletAmountApplied || 0) > 0 && (
+            <span className="text-[9px] font-bold text-balkun-orange mt-0.5">
+              {formatPrice(Number(booking.walletAmountApplied || 0))} تومان از کیف پول کسر شده
+            </span>
+          )}
         </div>
       </div>
     </div>
