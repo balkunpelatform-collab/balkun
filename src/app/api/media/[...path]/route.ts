@@ -1,33 +1,25 @@
 // مسیر: src/app/api/media/[...path]/route.ts
-// این فایل جدید است — آن را دقیقاً در همین مسیر در پروژه ایجاد کنید.
+// این فایل جایگزین همان فایل جدیدی می‌شود که در بند ۲۸ ساختید (همان مسیر).
 //
-// 🆕 بند ۲۸ — رفع قطعی مشکل «عکس بنر نمایش داده نمی‌شود»:
+// 🆕 بند ۲۹ — رفع باگ «پلیس‌هولدر ریز/عکس خراب» در خودِ پراکسی تصویر:
 //
-// ریشه‌ی واقعی مشکل (که راه‌حل‌های قبلی، از جمله `images.unoptimized: true` در
-// next.config.ts، فقط بخشی از آن را حل کرده بودند): آدرس عمومی تصاویر Supabase
-// Storage یک دامنه‌ی خارجی است (چیزی شبیه xxxx.supabase.co). وقتی خودِ مرورگر
-// کاربر (نه سرور پروژه) مستقیماً بخواهد این آدرس را بارگذاری کند، در بسیاری از
-// شبکه‌های اینترنت ایران این دامنه به‌طور کامل یا بخشی مسدود/کند/قطع می‌شود —
-// این یک محدودیت شبکه‌ای سمت کاربر است، نه یک تنظیم اشتباه در Next.js، پس هیچ
-// مقداری در next.config.ts (مثل remotePatterns یا unoptimized) نمی‌تواند آن را
-// حل کند، چون آن‌ها فقط رفتار «سرور» پروژه را کنترل می‌کنند، نه دسترسی مرورگر
-// کاربر نهایی به یک دامنه‌ی خارجی.
+// نسخه‌ی قبلی این فایل، عکس را از Supabase با گزینه‌ی `next: { revalidate }`
+// روی fetch می‌گرفت. این گزینه مخصوص کش کردن پاسخ‌های متنی/JSON در معماری کش
+// داخلی Next.js است؛ وقتی همین مکانیزم روی یک پاسخ باینری (عکس) اعمال شود،
+// در مسیر ذخیره/بازخوانی از کش داخلی Next.js، بایت‌های تصویر به‌درستی حفظ
+// نمی‌شوند و در مرورگر به‌صورت یک تصویر خراب/بسیار کوچک (Placeholder) دیده
+// می‌شود — دقیقاً همان چیزی که مشاهده کردید.
 //
-// راه‌حل: این Route Handler، خودش یک «پراکسی تصویر» است. مرورگر کاربر دیگر هرگز
-// مستقیم به Supabase وصل نمی‌شود؛ به‌جایش از همان دامنه‌ی خودِ سایت بالکن
-// (`/api/media/<bucket>/<مسیر فایل>`) تصویر را می‌خواهد. این Route Handler روی
-// سرور پروژه (روی زیرساخت Vercel، نه داخل ایران) اجرا می‌شود، تصویر را از
-// Supabase می‌گیرد (این ارتباط سرور-به-سرور است و هرگز توسط فیلترینگ ایران
-// مسدود نمی‌شود) و بایت‌های همان تصویر را مستقیماً به مرورگر کاربر برمی‌گرداند.
-//
-// از این پس src/app/api/admin/upload/route.ts به‌جای آدرس خام Supabase، همین
-// آدرس پراکسی‌شده را برمی‌گرداند و در دیتابیس ذخیره می‌شود — پس این مشکل برای
-// همیشه (نه فقط برای بنر، بلکه برای عکس آگهی‌ها و بلاگ هم) رفع می‌شود.
+// راه‌حل: ۱) این fetch را کاملاً از کش داخلی Next.js کنار می‌گذاریم
+// (`cache: "no-store"`) — کش واقعی و درست همچنان از طریق هدر Cache-Control
+// خودِ پاسخ نهایی (پایین همین فایل) روی مرورگر/CDN کاربر اعمال می‌شود، نه از
+// طریق کش داخلی fetch؛ ۲) به‌جای پاس‌دادن مستقیم Stream، کل بایت‌های تصویر را
+// یک‌جا با arrayBuffer() می‌خوانیم و کامل و دست‌نخورده برمی‌گردانیم — برای
+// عکس‌های چند ده/چند صد کیلوبایتی (مثل بنر) این کاملاً مطمئن و بی‌خطاست.
 
 import { NextRequest, NextResponse } from "next/server";
 import { supabaseAdmin } from "@/lib/supabase-admin";
 
-// دقیقاً همان سه باکتی که در src/app/api/admin/upload/route.ts مجاز است
 const ALLOWED_BUCKETS = ["accommodations", "blog", "banners"] as const;
 type AllowedBucket = (typeof ALLOWED_BUCKETS)[number];
 
@@ -47,7 +39,6 @@ export async function GET(
 
   const [bucket, ...restSegments] = path;
 
-  // امنیت: فقط باکت‌های شناخته‌شده و بدون خروج از مسیر (Path Traversal) مجازند
   if (!isAllowedBucket(bucket) || restSegments.some((seg) => seg.includes("..") || seg.trim() === "")) {
     return NextResponse.json({ success: false, error: "مسیر تصویر نامعتبر است" }, { status: 400 });
   }
@@ -57,25 +48,26 @@ export async function GET(
   try {
     const { data: publicUrlData } = supabaseAdmin.storage.from(bucket).getPublicUrl(objectPath);
 
-    // این fetch از سرور پروژه (Vercel) به Supabase انجام می‌شود — نه از مرورگر
-    // کاربر — پس هیچ‌وقت با فیلترینگ اینترنت ایران برخورد نمی‌کند.
-    const upstreamResponse = await fetch(publicUrlData.publicUrl, {
-      // تصاویر آپلودی همیشه با یک نام تصادفی+زمان‌دار ذخیره می‌شوند و هرگز
-      // بازنویسی (Overwrite) نمی‌شوند، پس کش طولانی‌مدت کاملاً امن است.
-      next: { revalidate: 60 * 60 * 24 * 30 },
-    });
+    // 🆕 بند ۲۹: cache: "no-store" یعنی این fetch هرگز وارد کش داخلی fetch
+    // نکست‌جی‌اس نمی‌شود (که باعث خراب‌شدن بایت‌های باینری می‌شد). این fetch
+    // همچنان از سرور پروژه (Vercel) به Supabase انجام می‌شود، نه از مرورگر کاربر.
+    const upstreamResponse = await fetch(publicUrlData.publicUrl, { cache: "no-store" });
 
-    if (!upstreamResponse.ok || !upstreamResponse.body) {
+    if (!upstreamResponse.ok) {
       return NextResponse.json({ success: false, error: "تصویر یافت نشد" }, { status: 404 });
     }
 
+    // 🆕 بند ۲۹: کل عکس را یک‌جا و دست‌نخورده می‌خوانیم (نه Stream تکه‌تکه)
+    const imageBuffer = await upstreamResponse.arrayBuffer();
     const contentType = upstreamResponse.headers.get("content-type") || "image/webp";
 
-    return new NextResponse(upstreamResponse.body, {
+    return new NextResponse(imageBuffer, {
       status: 200,
       headers: {
         "Content-Type": contentType,
-        // یک ماه کش در CDN/مرورگر کاربر؛ چون نام فایل تصادفی و تکرارنشدنی است
+        "Content-Length": String(imageBuffer.byteLength),
+        // کش واقعی و درست، فقط از همین‌جا (نه از کش داخلی fetch) اعمال می‌شود —
+        // یک ماه در مرورگر/CDN کاربر؛ چون نام فایل تصادفی و تکرارنشدنی است.
         "Cache-Control": "public, max-age=2592000, immutable",
       },
     });
