@@ -5,6 +5,17 @@
 // پیش‌فرض همان "accommodations" قبلی باقی می‌ماند (سازگار با فراخوانی‌های قبلی).
 // 🆕 تسک ۱۸ چک‌لیست کارفرما (امکان تغییر بنر اصلی صفحه اول): باکت سوم "banners"
 // اضافه شد تا تصاویر بنر اسلایدر صفحه اول هم از همین روت مشترک آپلود شوند.
+//
+// 🆕 بند ۲۸ (رفع قطعی مشکل «عکس بنر نمایش داده نمی‌شود»):
+// قبلاً این روت آدرس عمومی خام Supabase Storage (یک دامنه‌ی خارجی) را مستقیم
+// برمی‌گرداند و همان آدرس در دیتابیس ذخیره می‌شد. چون دامنه‌ی Supabase در بسیاری
+// از شبکه‌های اینترنت ایران برای خودِ مرورگر کاربر مسدود/کند است (برخلاف سرور
+// پروژه که چنین محدودیتی ندارد)، تصویر برای کاربر نهایی هیچ‌وقت بارگذاری
+// نمی‌شد — even though آپلود از پنل ادمین خودش بدون خطا انجام می‌شد.
+// از این پس، به‌جای آدرس خام Supabase، آدرس پراکسی‌شده‌ی خودِ همین پروژه
+// (`/api/media/<bucket>/<مسیر فایل>` — نگاه کنید به
+// src/app/api/media/[...path]/route.ts) برگردانده و در دیتابیس ذخیره می‌شود؛
+// مرورگر کاربر از این پس فقط با دامنه‌ی خودِ سایت بالکن صحبت می‌کند.
 
 import { NextRequest, NextResponse } from "next/server";
 import { supabaseAdmin } from "@/lib/supabase-admin";
@@ -60,16 +71,16 @@ export async function POST(request: NextRequest) {
       throw new Error("خطا در آپلود عکس در سرور");
     }
 
-    const { data: publicUrlData } = supabaseAdmin.storage
-      .from(bucket)
-      .getPublicUrl(filePath);
+    // 🆕 بند ۲۸: به‌جای آدرس خام Supabase (که برای بعضی کاربران ایرانی مستقیماً
+    // در دسترس نیست)، آدرس پراکسی‌شده‌ی خودِ پروژه را برمی‌گردانیم. مرورگر کاربر
+    // این آدرس را از دامنه‌ی خودِ سایت بالکن می‌خواهد، نه از Supabase.
+    const proxiedUrl = `/api/media/${bucket}/${filePath}`;
 
-    return NextResponse.json({ 
-      success: true, 
-      url: publicUrlData.publicUrl,
-      message: "تصویر با موفقیت بهینه‌سازی و آپلود شد" 
+    return NextResponse.json({
+      success: true,
+      url: proxiedUrl,
+      message: "تصویر با موفقیت بهینه‌سازی و آپلود شد",
     });
-
   } catch (error: any) {
     console.error("Image Processing Error:", error);
     return NextResponse.json({ success: false, error: error.message || "خطا در پردازش تصویر" }, { status: 500 });
