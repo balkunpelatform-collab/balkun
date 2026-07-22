@@ -1,28 +1,22 @@
 // مسیر: src/app/api/user/bookings/[id]/pay-partial-wallet/route.ts
-// این فایل جدید است — آن را در مسیر بالا در پروژه ایجاد کنید.
 //
-// 🆕 تسک ۲۷ چک‌لیست کارفرما (منطق پرداخت ترکیبی کیف پول + درگاه):
+// 🆕 تسک ۲۷ (قدیمی) چک‌لیست کارفرما (منطق پرداخت ترکیبی کیف پول + درگاه):
 // «اگر کاربر سازمانی یا عادی موجودی کیف پولش به اندازه مبلغ رزرو نباشد: ابتدا
 // تمام مبلغ موجود از کیف پول کسر شود، فقط باقیمانده مبلغ از طریق درگاه آنلاین
 // پرداخت شود.»
 //
 // این Route Handler دقیقاً همین کار را انجام می‌دهد و کاملاً مکمل
 // src/app/api/user/bookings/[id]/pay-with-wallet/route.ts است (که فقط برای
-// حالتی است که موجودی کیف پول کامل کافی باشد):
+// حالتی است که موجودی کیف پول کامل کافی باشد).
 //
-//   ۱. هر چقدر از موجودی کیف پول انتخاب‌شده (شخصی یا مشترک سازمانی) که در
-//      دسترس است را کسر می‌کند (حداکثر تا سقف مبلغ باقیمانده‌ی رزرو).
-//   ۲. اگر همین مبلغ کل باقیمانده را پوشش داد، رزرو بلافاصله قطعی می‌شود
-//      (دقیقاً مثل پرداخت کامل از کیف پول).
-//   ۳. اگر مبلغ کیف پول کافی نبود، مبلغ باقیمانده روی خودِ رزرو
-//      (ستون walletAmountApplied) ثبت می‌شود تا کاربر برای آن به درگاه
-//      هدایت شود؛ src/app/api/payment/request/route.ts از این پس فقط همین
-//      مبلغ باقیمانده (نه کل مبلغ رزرو) را از کاربر می‌گیرد.
+// 🆕 بند ۲۷ (بازگشت کیف پول سازمانی به موجودی مستقل هر کارمند): مسیر سازمانی
+// این فایل حالا دقیقاً مثل pay-with-wallet، از موجودی مستقل خودِ همین کاربر
+// (wallets.orgBalance) کسر می‌کند، نه از یک استخر مشترک بین کل پرسنل سازمان.
 //
-// نکات امنیتی: دقیقاً هم‌الگو با pay-with-wallet — مبلغ همیشه از دیتابیس خوانده
-// می‌شود (نه از بدنه‌ی درخواست)، کسر موجودی با UPDATE شرطی (CAS) انجام می‌شود
-// تا در برابر Race Condition ایمن باشد، و در صورت بروز خطای نیمه‌کاره، مبلغ
-// بلافاصله به کیف پول برمی‌گردد (Rollback).
+// نکات امنیتی: مبلغ همیشه از دیتابیس خوانده می‌شود (نه از بدنه‌ی درخواست)،
+// کسر موجودی با UPDATE شرطی (CAS) انجام می‌شود تا در برابر Race Condition
+// ایمن باشد، و در صورت بروز خطای نیمه‌کاره، مبلغ بلافاصله به کیف پول برمی‌گردد
+// (Rollback).
 
 import { NextRequest, NextResponse } from "next/server";
 import { supabaseAdmin } from "@/lib/supabase-admin";
@@ -79,7 +73,7 @@ export async function POST(req: NextRequest, { params }: { params: Promise<{ id:
       );
     }
 
-    // ۳. مسیر پرداخت ترکیبی از کیف پول سازمانی (استخر مشترک سازمان)
+    // ۳. مسیر پرداخت ترکیبی از کیف پول سازمانی (موجودی مستقل خودِ همین کاربر)
     if (walletType === "ORGANIZATIONAL") {
       const { data: userRow } = await supabaseAdmin
         .from("users")
@@ -96,7 +90,7 @@ export async function POST(req: NextRequest, { params }: { params: Promise<{ id:
 
       const { data: organization } = await supabaseAdmin
         .from("organizations")
-        .select("*")
+        .select("id, isActive")
         .eq("name", userRow.organizationName)
         .maybeSingle();
 
@@ -117,50 +111,53 @@ export async function POST(req: NextRequest, { params }: { params: Promise<{ id:
         );
       }
 
-      const currentOrgBalance = Number(organization.walletBalance);
-      if (currentOrgBalance <= 0) {
+      let { data: personalWallet } = await supabaseAdmin.from("wallets").select("*").eq("userId", userId).maybeSingle();
+      if (!personalWallet) {
+        const { data: newWallet } = await supabaseAdmin.from("wallets").insert([{ userId }]).select().single();
+        personalWallet = newWallet;
+      }
+      if (!personalWallet) {
+        return NextResponse.json({ success: false, error: "خطا در دسترسی به کیف پول شما" }, { status: 500 });
+      }
+
+      const currentBalance = Number(personalWallet.orgBalance);
+      if (currentBalance <= 0) {
         return NextResponse.json(
-          { success: false, error: "موجودی کیف پول مشترک سازمان صفر است؛ امکان پرداخت ترکیبی وجود ندارد." },
+          { success: false, error: "موجودی کیف پول سازمانی شما صفر است؛ امکان پرداخت ترکیبی وجود ندارد." },
           { status: 400 }
         );
       }
 
-      const walletPortion = Math.min(currentOrgBalance, remainingAmount);
+      const walletPortion = Math.min(currentBalance, remainingAmount);
 
-      // کسر شرطی (CAS) از استخر مشترک سازمان
-      const { data: updatedOrganization } = await supabaseAdmin
-        .from("organizations")
-        .update({ walletBalance: currentOrgBalance - walletPortion, updatedAt: new Date().toISOString() })
-        .eq("id", organization.id)
-        .eq("walletBalance", currentOrgBalance)
+      // کسر شرطی (CAS) از موجودی مستقل همین کاربر
+      const { data: updatedWallet } = await supabaseAdmin
+        .from("wallets")
+        .update({ orgBalance: currentBalance - walletPortion, updatedAt: new Date().toISOString() })
+        .eq("id", personalWallet.id)
+        .eq("orgBalance", currentBalance)
         .select()
         .maybeSingle();
 
-      if (!updatedOrganization) {
+      if (!updatedWallet) {
         return NextResponse.json(
-          { success: false, error: "موجودی کیف پول سازمان هم‌زمان تغییر کرده است. لطفاً دوباره تلاش کنید." },
+          { success: false, error: "موجودی کیف پول شما هم‌زمان تغییر کرده است. لطفاً دوباره تلاش کنید." },
           { status: 409 }
         );
       }
 
-      let { data: personalWallet } = await supabaseAdmin.from("wallets").select("*").eq("userId", userId).maybeSingle();
-      if (!personalWallet) {
-        const { data: newWallet } = await supabaseAdmin.from("wallets").insert([{ userId }]).select().single();
-        if (newWallet) personalWallet = newWallet;
-      }
-
       const trackingCode = `WALLET-PARTIAL-${booking.id.split("-")[0].toUpperCase()}`;
 
-      const rollbackOrgBalance = async () => {
+      const rollbackWalletBalance = async () => {
         await supabaseAdmin
-          .from("organizations")
-          .update({ walletBalance: currentOrgBalance, updatedAt: new Date().toISOString() })
-          .eq("id", organization.id);
+          .from("wallets")
+          .update({ orgBalance: currentBalance, updatedAt: new Date().toISOString() })
+          .eq("id", personalWallet!.id);
       };
 
       const { error: txError } = await supabaseAdmin.from("transactions").insert([
         {
-          walletId: personalWallet ? personalWallet.id : null,
+          walletId: personalWallet.id,
           organizationId: organization.id,
           amount: walletPortion,
           type: "WITHDRAWAL",
@@ -173,8 +170,8 @@ export async function POST(req: NextRequest, { params }: { params: Promise<{ id:
 
       if (txError) {
         console.error("Org Partial Wallet Payment Transaction Insert Error (rolled back):", txError);
-        await rollbackOrgBalance();
-        return NextResponse.json({ success: false, error: "خطا در ثبت تراکنش؛ مبلغی از کیف پول سازمان کسر نشد" }, { status: 500 });
+        await rollbackWalletBalance();
+        return NextResponse.json({ success: false, error: "خطا در ثبت تراکنش؛ مبلغی از کیف پول شما کسر نشد" }, { status: 500 });
       }
 
       return await finalizePartialPayment({
@@ -182,7 +179,7 @@ export async function POST(req: NextRequest, { params }: { params: Promise<{ id:
         walletPortion,
         remainingAmount,
         walletType: "ORGANIZATIONAL",
-        rollback: rollbackOrgBalance,
+        rollback: rollbackWalletBalance,
         trackingCode,
         userId,
       });
@@ -192,7 +189,7 @@ export async function POST(req: NextRequest, { params }: { params: Promise<{ id:
     let { data: wallet } = await supabaseAdmin.from("wallets").select("*").eq("userId", userId).maybeSingle();
     if (!wallet) {
       const { data: newWallet } = await supabaseAdmin.from("wallets").insert([{ userId }]).select().single();
-      if (newWallet) wallet = newWallet;
+      wallet = newWallet;
     }
     if (!wallet) throw new Error("کیف پول یافت نشد");
 
@@ -227,7 +224,7 @@ export async function POST(req: NextRequest, { params }: { params: Promise<{ id:
       await supabaseAdmin
         .from("wallets")
         .update({ normalBalance: currentBalance, updatedAt: new Date().toISOString() })
-        .eq("id", wallet.id);
+        .eq("id", wallet!.id);
     };
 
     const { error: txError } = await supabaseAdmin.from("transactions").insert([

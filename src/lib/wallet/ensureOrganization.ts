@@ -1,15 +1,13 @@
 // مسیر: src/lib/wallet/ensureOrganization.ts
 //
-// 🆕 تسک ۷ چک‌لیست کارفرما (تفکیک کیف پول سازمانی + شارژ خودکار + غیرفعال‌سازی سازمان):
-// از این پس کیف پول سازمانی دیگر per-user نیست؛ هر سازمان دقیقاً یک ردیف در جدول
-// جدید `organizations` دارد که موجودی کیف پول مشترک (walletBalance)، وضعیت فعال/غیرفعال
-// (isActive) و تنظیمات شارژ خودکار آن را نگه می‌دارد. این تابع کمکی تضمین می‌کند که
-// هر بار نام یک سازمان جدید در سیستم ظاهر می‌شود (چه از ثبت‌نام کاربر، چه از افزودن
-// شماره به لیست سفید سازمانی تکی/گروهی)، بلافاصله یک ردیف سازمان برایش ساخته شود —
-// در غیر این صورت آن سازمان کیف پول قابل مدیریتی در پنل ادمین نخواهد داشت.
+// 🆕 بند ۲۷ (بازگشت کیف پول سازمانی به موجودی مستقل هر کارمند):
+// این فایل از تسک ۷ قبلی باقی مانده و بدون تغییر در منطق اصلی‌اش کار می‌کند —
+// هنوز هم هر سازمان دقیقاً یک ردیف در جدول `organizations` دارد (برای نگه‌داشتن
+// isActive، تنظیمات شارژ خودکار، و غیره). تنها تغییر: یک تابع کمکی جدید
+// (getOrganizationIdByName) اضافه شده تا بقیه‌ی کد مجبور نباشد بعد از
+// ensureOrganizationExists دوباره و دوباره همان کوئری select را بنویسد.
 //
 // idempotent است: اگر سازمان از قبل وجود داشته باشد، هیچ تغییری اعمال نمی‌شود.
-// این فایل، فایل جدیدی است — آن را در مسیر بالا در پروژه ایجاد کنید.
 
 import { supabaseAdmin } from "@/lib/supabase-admin";
 
@@ -31,4 +29,22 @@ export async function ensureOrganizationExists(organizationName: string): Promis
   if (error && error.code !== "23505") {
     console.error("ensureOrganizationExists Error:", error);
   }
+}
+
+// 🆕 بند ۲۷: تضمین وجود سازمان و برگرداندن شناسه‌ی (id) آن در یک فراخوانی.
+// چون از این پس در چند نقطه (ثبت‌نام، شارژ گروهی کارکنان) بلافاصله بعد از
+// ensureOrganizationExists به organizationId هم نیاز داریم.
+export async function getOrCreateOrganizationId(organizationName: string): Promise<string | null> {
+  const name = organizationName.trim();
+  if (!name) return null;
+
+  await ensureOrganizationExists(name);
+
+  const { data: org } = await supabaseAdmin
+    .from("organizations")
+    .select("id")
+    .eq("name", name)
+    .maybeSingle();
+
+  return org?.id ?? null;
 }

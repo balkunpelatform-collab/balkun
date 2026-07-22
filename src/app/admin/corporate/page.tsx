@@ -7,7 +7,7 @@
 //      (پارس فایل در همین صفحه در مرورگر انجام می‌شود، سپس ردیف‌ها به‌صورت یک‌جا به
 //      /api/admin/corporate/numbers/bulk ارسال می‌شوند).
 //   ۴) 🆕 تسک ۷ چک‌لیست کارفرما (تفکیک کیف پول سازمانی + شارژ خودکار + غیرفعال‌سازی سازمان):
-//      کیف پول‌های سازمانی — مدیریت متمرکز استخر مشترک کیف پول هر سازمان: مشاهده موجودی،
+//      کیف پول‌های سازمانی — مدیریت متمرکز کیف پول هر سازمان: مشاهده موجودی،
 //      شارژ/کسر دستی، فعال/غیرفعال‌سازی سازمان (که بلافاصله جلوی استفاده‌ی پرسنل از کیف
 //      پول سازمانی را می‌گیرد)، و تنظیم/اجرای شارژ خودکار دوره‌ای.
 // قبل از این فایل، هیچ‌کدام از این چهار بخش در پنل ادمین قابل مشاهده یا مدیریت نبودند.
@@ -18,6 +18,20 @@
 // همان بخش) — نه بخش‌های (۱)، (۲) و (۳) که عملیاتی/فروش هستند، نه مالی. تب‌های
 // انتخاب بخش هم برای این نقش اصلاً رندر نمی‌شوند تا رابط کاربری‌اش ساده و متمرکز
 // روی همان چیزی بماند که در چک‌لیست خواسته شده («سازمان‌ها»).
+//
+// 🆕 بند ۲۷ (بازگشت کیف پول سازمانی به موجودی مستقل هر کارمند):
+// طبق درخواست صریح کارفرما، از این پس هیچ «استخر مشترک» بین پرسنل یک سازمان وجود
+// ندارد؛ هر کارمند کیف پول سازمانی کاملاً مستقل خودش را دارد. این فایل سه تغییر دارد:
+//   ۱) ستون «موجودی» جدول سازمان‌ها از این پس یعنی «مجموع موجودی واقعی تمام پرسنل»
+//      (که بک‌اند در src/app/api/admin/corporate/organizations/route.ts محاسبه می‌کند)،
+//      نه یک عدد قابل‌خرج مشترک — برچسبش به همین خاطر تغییر کرد.
+//   ۲) دکمه‌ی قدیمی «شارژ/کسر» حالا یعنی «همین مبلغ را جداگانه به تک‌تک پرسنل فعلی این
+//      سازمان اضافه/از آن کم کن»، نه یک استخر مشترک — متن توضیحی OrgChargeModal همین
+//      را می‌گوید.
+//   ۳) یک ابزار کاملاً جدید اضافه شد: «شارژ گروهی از لیست شماره‌ها» — دقیقاً همان چیزی
+//      که کارفرما خواسته («این لیست کارکنانم است، نفری ۱۰ میلیون تومان شارژ کنید»).
+//      کارمندانی که هنوز ثبت‌نام نکرده‌اند را هم پشتیبانی می‌کند (شارژشان تا لحظه‌ی
+//      ثبت‌نام معلق می‌ماند و خودکار همان لحظه اعمال می‌شود).
 
 "use client";
 
@@ -82,7 +96,9 @@ interface BulkRowResult {
   reason?: string;
 }
 
-// 🆕 تسک ۷: ساختار یک سازمان (کیف پول مشترک)
+// 🆕 تسک ۷: ساختار یک سازمان (کیف پول)
+// 🆕 بند ۲۷: walletBalance از این پس یعنی «مجموع موجودی واقعی تمام پرسنل» (محاسبه‌شده
+// سمت سرور)، نه یک استخر مشترک قابل‌خرج — نگاه کنید به توضیح بالای فایل.
 interface Organization {
   id: string;
   name: string;
@@ -142,7 +158,7 @@ export default function AdminCorporatePage() {
         </h1>
         <p className="text-sm font-medium text-slate-500 mt-1">
           {isFinanceManager
-            ? "کیف‌پول‌های مشترک سازمانی بالکن، فقط‌خواندنی."
+            ? "کیف‌پول‌های سازمانی بالکن، فقط‌خواندنی."
             : "تمام درخواست‌ها، کاربران، شماره‌ها و کیف‌پول‌های سازمانی بالکن، یکجا و متمرکز."}
         </p>
       </div>
@@ -1071,10 +1087,13 @@ function BulkImportPanel({ onImported }: { onImported: () => void }) {
 // ============================================================
 // 🆕 تسک ۷ چک‌لیست کارفرما: بخش ۴ — کیف پول‌های سازمانی
 // ============================================================
-// این بخش برای هر سازمان: موجودی مشترک، تعداد پرسنل، وضعیت فعال/غیرفعال و تنظیمات
-// شارژ خودکار را نشان می‌دهد. عملیات نوشتنی (شارژ/کسر دستی، فعال/غیرفعال‌سازی، ذخیره‌ی
-// تنظیمات شارژ خودکار) فقط برای مدیر ارشد (SUPER_ADMIN) فعال است؛ مدیر مالی (اگر به این
-// صفحه دسترسی داشته باشد) فقط می‌تواند مشاهده کند.
+// این بخش برای هر سازمان: موجودی، تعداد پرسنل، وضعیت فعال/غیرفعال و تنظیمات
+// شارژ خودکار را نشان می‌دهد. عملیات نوشتنی (شارژ/کسر دستی، شارژ گروهی از لیست،
+// فعال/غیرفعال‌سازی، ذخیره‌ی تنظیمات شارژ خودکار) فقط برای مدیر ارشد (SUPER_ADMIN)
+// فعال است؛ مدیر مالی (اگر به این صفحه دسترسی داشته باشد) فقط می‌تواند مشاهده کند.
+//
+// 🆕 بند ۲۷ (بازگشت کیف پول سازمانی به موجودی مستقل هر کارمند): دیگر هیچ استخر
+// مشترکی وجود ندارد؛ ستون «موجودی» از این پس یعنی «مجموع موجودی واقعی تمام پرسنل».
 function WalletsSection({ isSuperAdmin }: { isSuperAdmin: boolean }) {
   const [organizations, setOrganizations] = useState<Organization[]>([]);
   const [isLoading, setIsLoading] = useState(true);
@@ -1083,6 +1102,8 @@ function WalletsSection({ isSuperAdmin }: { isSuperAdmin: boolean }) {
   const [isRunningAutoCharge, setIsRunningAutoCharge] = useState(false);
 
   const [chargeTarget, setChargeTarget] = useState<Organization | null>(null);
+  // 🆕 بند ۲۷: هدف مودال جدید «شارژ گروهی از لیست شماره‌ها»
+  const [bulkChargeTarget, setBulkChargeTarget] = useState<Organization | null>(null);
   const [settingsTarget, setSettingsTarget] = useState<Organization | null>(null);
   const [toggleTarget, setToggleTarget] = useState<Organization | null>(null);
   const [isToggling, setIsToggling] = useState(false);
@@ -1199,7 +1220,8 @@ function WalletsSection({ isSuperAdmin }: { isSuperAdmin: boolean }) {
               <tr>
                 <th className="px-6 py-4">سازمان</th>
                 <th className="px-6 py-4">تعداد پرسنل</th>
-                <th className="px-6 py-4">موجودی مشترک</th>
+                {/* 🆕 بند ۲۷: قبلاً «موجودی مشترک» — از این پس یعنی مجموع موجودی مستقل تمام پرسنل */}
+                <th className="px-6 py-4">مجموع موجودی پرسنل</th>
                 <th className="px-6 py-4">شارژ خودکار</th>
                 <th className="px-6 py-4">وضعیت</th>
                 <th className="px-6 py-4">عملیات</th>
@@ -1243,6 +1265,13 @@ function WalletsSection({ isSuperAdmin }: { isSuperAdmin: boolean }) {
                           >
                             <Wallet className="w-3.5 h-3.5" /> شارژ/کسر
                           </button>
+                          {/* 🆕 بند ۲۷: دکمه‌ی جدید — شارژ گروهی دقیق از روی لیست شماره‌موبایل کارکنان */}
+                          <button
+                            onClick={() => setBulkChargeTarget(org)}
+                            className="inline-flex items-center gap-1.5 bg-balkun-orange/10 hover:bg-balkun-orange text-balkun-orange hover:text-white px-3 py-1.5 rounded-lg transition-colors font-bold text-xs"
+                          >
+                            <Users2 className="w-3.5 h-3.5" /> شارژ گروهی از لیست
+                          </button>
                           <button
                             onClick={() => setSettingsTarget(org)}
                             className="inline-flex items-center gap-1.5 bg-slate-100 hover:bg-slate-200 text-slate-600 px-3 py-1.5 rounded-lg transition-colors font-bold text-xs"
@@ -1275,7 +1304,16 @@ function WalletsSection({ isSuperAdmin }: { isSuperAdmin: boolean }) {
         <OrgChargeModal
           organization={chargeTarget}
           onClose={() => setChargeTarget(null)}
-          onSuccess={() => { setChargeTarget(null); fetchOrganizations(); showMessage("موجودی سازمان بروزرسانی شد", "success"); }}
+          onSuccess={() => { setChargeTarget(null); fetchOrganizations(); showMessage("عملیات شارژ/کسر روی پرسنل این سازمان انجام شد", "success"); }}
+        />
+      )}
+
+      {/* 🆕 بند ۲۷: مودال جدید شارژ گروهی از لیست شماره‌ها */}
+      {bulkChargeTarget && (
+        <OrgBulkChargeMembersModal
+          organization={bulkChargeTarget}
+          onClose={() => setBulkChargeTarget(null)}
+          onSuccess={() => { fetchOrganizations(); showMessage("شارژ گروهی از لیست انجام شد", "success"); }}
         />
       )}
 
@@ -1299,8 +1337,8 @@ function WalletsSection({ isSuperAdmin }: { isSuperAdmin: boolean }) {
             </div>
             <div className={`text-sm font-bold p-3 rounded-xl ${toggleTarget.isActive ? "bg-red-50 text-red-700" : "bg-green-50 text-green-700"}`}>
               {toggleTarget.isActive
-                ? `با غیرفعال‌سازی «${toggleTarget.name}»، تمام ${toggleTarget.memberCount} پرسنل این سازمان فوراً دیگر نمی‌توانند از کیف پول سازمانی برای پرداخت رزرو استفاده کنند. موجودی سازمان حفظ می‌شود و با فعال‌سازی مجدد بلافاصله در دسترس خواهد بود.`
-                : `با فعال‌سازی «${toggleTarget.name}»، پرسنل این سازمان دوباره می‌توانند از کیف پول مشترک سازمانی (موجودی فعلی: ${formatToman(toggleTarget.walletBalance)} تومان) برای پرداخت رزرو استفاده کنند.`}
+                ? `با غیرفعال‌سازی «${toggleTarget.name}»، تمام ${toggleTarget.memberCount} پرسنل این سازمان فوراً دیگر نمی‌توانند از کیف پول سازمانی برای پرداخت رزرو استفاده کنند. موجودی هرکس در کیف پول مستقل خودش حفظ می‌شود و با فعال‌سازی مجدد بلافاصله در دسترس خواهد بود.`
+                : `با فعال‌سازی «${toggleTarget.name}»، پرسنل این سازمان دوباره می‌توانند از کیف پول سازمانی مستقل خودشان (مجموع فعلی همه‌ی پرسنل: ${formatToman(toggleTarget.walletBalance)} تومان) برای پرداخت رزرو استفاده کنند.`}
             </div>
             <div className="flex gap-3 mt-2">
               <button onClick={() => setToggleTarget(null)} disabled={isToggling} className="flex-1 py-2.5 rounded-xl border border-slate-200 text-slate-600 font-bold text-sm hover:bg-slate-50 disabled:opacity-50">انصراف</button>
@@ -1321,7 +1359,9 @@ function WalletsSection({ isSuperAdmin }: { isSuperAdmin: boolean }) {
   );
 }
 
-// مودال شارژ/کسر دستی کیف پول مشترک یک سازمان
+// مودال شارژ/کسر دستی کیف پول یک سازمان
+// 🆕 بند ۲۷: از این پس این مودال یعنی «همین مبلغ را جداگانه به تک‌تک پرسنل فعلی
+// (ثبت‌نام‌شده‌ی) این سازمان اضافه/از آن کم کن»، نه یک استخر مشترک.
 function OrgChargeModal({ organization, onClose, onSuccess }: { organization: Organization; onClose: () => void; onSuccess: () => void }) {
   const [direction, setDirection] = useState<"DEPOSIT" | "WITHDRAWAL">("DEPOSIT");
   const [amount, setAmount] = useState("");
@@ -1361,8 +1401,9 @@ function OrgChargeModal({ organization, onClose, onSuccess }: { organization: Or
           <button onClick={() => !isSaving && onClose()} className="p-1.5 text-slate-400 hover:text-slate-600"><X className="w-5 h-5" /></button>
         </div>
 
+        {/* 🆕 بند ۲۷: متن توضیحی به‌طور کامل بازنویسی شد — دیگر «کیف پول مشترک» نیست */}
         <p className="text-xs font-bold text-slate-500">
-          موجودی فعلی: <span className="text-balkun-navy">{formatToman(organization.walletBalance)} تومان</span> — این تغییر روی کیف پول مشترک، یعنی برای تمام {organization.memberCount} پرسنل این سازمان اعمال می‌شود.
+          مجموع فعلی موجودی همه‌ی پرسنل: <span className="text-balkun-navy">{formatToman(organization.walletBalance)} تومان</span> — این مبلغ به‌طور کامل و <u>جداگانه</u> به کیف پول مستقل تک‌تک {organization.memberCount} نفر از پرسنل *فعلی* (ثبت‌نام‌شده‌ی) این سازمان اضافه/از آن کم می‌شود؛ استخر مشترکی در کار نیست. برای شارژ دقیق طبق یک لیست شماره‌موبایل مشخص (که شامل افراد هنوز ثبت‌نام‌نکرده هم بشود)، از دکمه‌ی «شارژ گروهی از لیست» استفاده کنید.
         </p>
 
         <div className="grid grid-cols-2 gap-2">
@@ -1381,7 +1422,7 @@ function OrgChargeModal({ organization, onClose, onSuccess }: { organization: Or
         </div>
 
         <div className="flex flex-col gap-1.5">
-          <label className="text-xs font-bold text-slate-500">مبلغ (تومان)</label>
+          <label className="text-xs font-bold text-slate-500">مبلغ هر نفر (تومان)</label>
           <input
             type="text"
             inputMode="numeric"
@@ -1417,7 +1458,224 @@ function OrgChargeModal({ organization, onClose, onSuccess }: { organization: Or
   );
 }
 
+// ============================================================
+// 🆕 بند ۲۷ (بازگشت کیف پول سازمانی به موجودی مستقل هر کارمند): مودال کاملاً جدید —
+// شارژ گروهی دقیق از روی یک لیست شماره‌موبایل کارمند. این دقیقاً همان چیزی است
+// که کارفرما خواسته: «این لیست کارکنانم است، نفری ۱۰ میلیون تومان شارژ کنید».
+// ============================================================
+function OrgBulkChargeMembersModal({
+  organization,
+  onClose,
+  onSuccess,
+}: {
+  organization: Organization;
+  onClose: () => void;
+  onSuccess: () => void;
+}) {
+  const [rawList, setRawList] = useState("");
+  const [defaultAmount, setDefaultAmount] = useState("");
+  const [reason, setReason] = useState("");
+  const [isSubmitting, setIsSubmitting] = useState(false);
+  const [error, setError] = useState("");
+  const [result, setResult] = useState<null | {
+    summary: {
+      total: number;
+      chargedNow: number;
+      pending: number;
+      conflict: number;
+      invalid: number;
+      duplicate: number;
+      chargedNowTotal: number;
+      pendingTotal: number;
+    };
+    results: {
+      row: number;
+      phoneNumber: string;
+      amount: number;
+      status: string;
+      reason?: string;
+    }[];
+  }>(null);
+
+  const STATUS_LABEL: Record<string, { label: string; className: string }> = {
+    charged_now: { label: "شارژ شد", className: "text-green-600 bg-green-50" },
+    pending_registration: { label: "معلق تا ثبت‌نام", className: "text-balkun-orange bg-balkun-orange/10" },
+    conflict_other_org: { label: "تداخل سازمان", className: "text-red-600 bg-red-50" },
+    duplicate: { label: "تکراری در لیست", className: "text-slate-500 bg-slate-100" },
+    invalid: { label: "نامعتبر", className: "text-red-600 bg-red-50" },
+  };
+
+  // هر خط: «۰۹xxxxxxxxx» یا «۰۹xxxxxxxxx, مبلغ اختصاصی»
+  const parseRows = (): { phoneNumber: string; amount?: number }[] => {
+    return rawList
+      .split("\n")
+      .map((line) => line.trim())
+      .filter(Boolean)
+      .map((line) => {
+        const parts = line.split(",").map((p) => p.trim());
+        const phoneNumber = parts[0];
+        const amount = parts[1] ? Number(parts[1].replace(/\D/g, "")) : undefined;
+        return { phoneNumber, amount };
+      });
+  };
+
+  const handleSubmit = async () => {
+    setError("");
+    const rows = parseRows();
+    if (rows.length === 0) {
+      setError("لیست شماره‌ها خالی است");
+      return;
+    }
+    if (!defaultAmount && rows.some((r) => !r.amount)) {
+      setError("برای خط‌هایی که مبلغ اختصاصی ندارند، باید «مبلغ پیش‌فرض هر نفر» را پر کنید");
+      return;
+    }
+    if (!reason || reason.trim().length < 5) {
+      setError("درج دلیل الزامی است (حداقل ۵ کاراکتر)");
+      return;
+    }
+
+    setIsSubmitting(true);
+    try {
+      const res = await fetch(`/api/admin/corporate/organizations/${organization.id}/bulk-charge-members`, {
+        method: "POST",
+        headers: { "Content-Type": "application/json" },
+        body: JSON.stringify({
+          rows,
+          defaultAmount: defaultAmount ? Number(defaultAmount) : undefined,
+          reason: reason.trim(),
+        }),
+      });
+      const data = await res.json();
+      if (data.success) {
+        setResult(data);
+        onSuccess();
+      } else {
+        setError(data.error || "خطا در انجام عملیات");
+      }
+    } catch {
+      setError("خطای شبکه");
+    } finally {
+      setIsSubmitting(false);
+    }
+  };
+
+  return (
+    <div className="fixed inset-0 z-[70] flex items-center justify-center p-4 bg-black/50">
+      <div className="bg-white rounded-2xl shadow-2xl w-full max-w-lg p-6 flex flex-col gap-4 max-h-[90vh] overflow-y-auto" onClick={(e) => e.stopPropagation()}>
+        <div className="flex items-center justify-between">
+          <h3 className="font-black text-lg text-balkun-navy flex items-center gap-2">
+            <Users2 className="w-5 h-5 text-balkun-orange" /> شارژ گروهی کارکنان از روی لیست
+          </h3>
+          <button onClick={onClose} className="p-1.5 text-slate-400 hover:text-slate-600"><X className="w-5 h-5" /></button>
+        </div>
+        <p className="text-xs font-medium text-slate-500 -mt-2">سازمان: «{organization.name}»</p>
+
+        {!result ? (
+          <>
+            <div className="flex flex-col gap-1.5">
+              <label className="text-xs font-bold text-slate-500">
+                لیست شماره‌موبایل کارکنان (هر شماره در یک خط — اختیاری: کاما و مبلغ اختصاصی همان نفر)
+              </label>
+              <textarea
+                dir="ltr"
+                value={rawList}
+                onChange={(e) => setRawList(e.target.value)}
+                placeholder={"09121234567\n09123456789, 15000000\n09351112233"}
+                rows={7}
+                className="w-full bg-slate-50 border border-slate-200 rounded-xl px-4 py-3 text-left font-mono text-sm text-balkun-navy outline-none focus:border-balkun-cyan"
+              />
+            </div>
+            <div className="flex flex-col gap-1.5">
+              <label className="text-xs font-bold text-slate-500">مبلغ پیش‌فرض هر نفر (تومان)</label>
+              <input
+                type="text"
+                inputMode="numeric"
+                dir="ltr"
+                value={defaultAmount}
+                onChange={(e) => setDefaultAmount(e.target.value.replace(/\D/g, ""))}
+                placeholder="مثال: 10000000"
+                className="w-full bg-slate-50 border border-slate-200 rounded-xl px-4 py-2.5 text-left font-black text-lg text-balkun-navy outline-none focus:border-balkun-cyan"
+              />
+              <span className="text-[10px] text-slate-400 font-medium">فقط برای خط‌هایی که مبلغ اختصاصی خودشان را ندارند استفاده می‌شود</span>
+            </div>
+            <div className="flex flex-col gap-1.5">
+              <label className="text-xs font-bold text-slate-500">دلیل این شارژ گروهی</label>
+              <input
+                type="text"
+                value={reason}
+                onChange={(e) => setReason(e.target.value)}
+                placeholder="مثال: قرارداد جدید — نفری ۱۰ میلیون تومان"
+                className="w-full bg-slate-50 border border-slate-200 rounded-xl px-4 py-2.5 text-sm font-medium focus:outline-none focus:border-balkun-cyan"
+              />
+            </div>
+
+            <div className="bg-balkun-cyan/5 border border-balkun-cyan/20 rounded-xl p-3 text-[11px] text-slate-500 leading-relaxed">
+              کارمندانی که از قبل در بالکن ثبت‌نام کرده باشند، بلافاصله شارژ می‌شوند. کارمندانی که هنوز
+              ثبت‌نام نکرده‌اند، به لیست سفید سازمانی اضافه می‌شوند و مبلغشان همان لحظه‌ی ثبت‌نام، خودکار
+              روی کیف پولشان اعمال خواهد شد.
+            </div>
+
+            {error && <div className="bg-red-50 text-red-600 text-xs font-bold p-3 rounded-xl">{error}</div>}
+
+            <div className="flex gap-3 mt-2">
+              <button onClick={onClose} disabled={isSubmitting} className="flex-1 py-2.5 rounded-xl border border-slate-200 text-slate-600 font-bold text-sm hover:bg-slate-50 disabled:opacity-50">انصراف</button>
+              <button
+                onClick={handleSubmit}
+                disabled={isSubmitting}
+                className="flex-1 py-2.5 rounded-xl bg-balkun-navy text-white font-bold text-sm hover:bg-balkun-navy-dark disabled:opacity-50 flex items-center justify-center gap-2"
+              >
+                {isSubmitting ? <Loader2 className="w-4 h-4 animate-spin" /> : "شروع شارژ گروهی"}
+              </button>
+            </div>
+          </>
+        ) : (
+          <div className="flex flex-col gap-4">
+            <div className="grid grid-cols-2 gap-2 text-xs">
+              <div className="bg-green-50 rounded-xl p-3">
+                <span className="block text-slate-500">شارژ فوری</span>
+                <span className="block text-lg font-black text-green-600">{result.summary.chargedNow} نفر</span>
+              </div>
+              <div className="bg-balkun-orange/10 rounded-xl p-3">
+                <span className="block text-slate-500">معلق تا ثبت‌نام</span>
+                <span className="block text-lg font-black text-balkun-orange">{result.summary.pending} نفر</span>
+              </div>
+              <div className="bg-red-50 rounded-xl p-3">
+                <span className="block text-slate-500">تداخل / نامعتبر</span>
+                <span className="block text-lg font-black text-red-600">{result.summary.conflict + result.summary.invalid} نفر</span>
+              </div>
+              <div className="bg-slate-100 rounded-xl p-3">
+                <span className="block text-slate-500">تکراری در لیست</span>
+                <span className="block text-lg font-black text-slate-600">{result.summary.duplicate} نفر</span>
+              </div>
+            </div>
+
+            <div className="max-h-64 overflow-y-auto flex flex-col gap-1.5 border border-slate-100 rounded-xl p-2">
+              {result.results.map((r) => (
+                <div key={r.row} className="flex items-center justify-between text-xs px-2 py-1.5 rounded-lg bg-slate-50">
+                  <span dir="ltr" className="font-mono">{r.phoneNumber || `ردیف ${r.row}`}</span>
+                  <span className={`px-2 py-0.5 rounded-full font-bold ${STATUS_LABEL[r.status]?.className || "bg-slate-100 text-slate-500"}`}>
+                    {STATUS_LABEL[r.status]?.label || r.status}
+                  </span>
+                </div>
+              ))}
+            </div>
+
+            <button onClick={onClose} className="w-full bg-slate-100 hover:bg-slate-200 text-slate-700 font-bold py-3 rounded-xl transition-all">
+              بستن
+            </button>
+          </div>
+        )}
+      </div>
+    </div>
+  );
+}
+
 // مودال تنظیمات شارژ خودکار یک سازمان
+// 🆕 بند ۲۷: هیچ تغییری در این مودال لازم نبود — بک‌اند مربوطه
+// (src/app/api/admin/corporate/organizations/auto-charge/route.ts) به‌گونه‌ای
+// بازنویسی شده که همین amount/intervalDays را می‌گیرد ولی حالا آن را به تک‌تک
+// پرسنل فعلی سازمان (نه یک استخر مشترک) اعمال می‌کند.
 function OrgAutoChargeModal({ organization, onClose, onSuccess }: { organization: Organization; onClose: () => void; onSuccess: () => void }) {
   const [enabled, setEnabled] = useState(organization.autoChargeEnabled);
   const [amount, setAmount] = useState(String(organization.autoChargeAmount || ""));
@@ -1474,7 +1732,7 @@ function OrgAutoChargeModal({ organization, onClose, onSuccess }: { organization
         </button>
 
         <div className="flex flex-col gap-1.5">
-          <label className="text-xs font-bold text-slate-500">مبلغ هر بار شارژ (تومان)</label>
+          <label className="text-xs font-bold text-slate-500">مبلغ هر بار شارژ، به‌ازای هر نفر (تومان)</label>
           <input
             type="text"
             inputMode="numeric"

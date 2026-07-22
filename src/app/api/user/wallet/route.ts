@@ -2,11 +2,11 @@
 // API دریافت اطلاعات کیف پول و تراکنش‌ها — متصل به جداول واقعی wallets/transactions.
 // شارژ واقعی کیف پول (POST) عمداً به فاز ۶ موکول شده چون به درگاه بانکی نیاز دارد.
 //
-// 🆕 تسک ۷ چک‌لیست کارفرما (تفکیک کیف پول سازمانی + شارژ خودکار + غیرفعال‌سازی سازمان):
-// از این پس موجودی سازمانی دیگر روی wallet.orgBalance نیست (آن ستون همیشه ۰ است).
-// اگر کاربر سازمانی باشد، اطلاعات کیف پول مشترک سازمانش (نام، موجودی، وضعیت فعال/غیرفعال)
-// هم در فیلد جدید «organization» برگردانده می‌شود تا src/components/profile/WalletView.tsx
-// بتواند آن را نمایش دهد.
+// 🆕 بند ۲۷ (بازگشت کیف پول سازمانی به موجودی مستقل هر کارمند):
+// از این پس wallet.orgBalance دوباره موجودی واقعی و مستقل کیف پول سازمانی
+// همین کاربر است (نه یک استخر مشترک بین کل پرسنل). فیلد جداگانه‌ی «organization»
+// همچنان برگردانده می‌شود، اما فقط شامل هویت و وضعیت فعال/غیرفعال سازمان است —
+// دیگر هیچ عدد موجودی‌ای در آن نیست (چون موجودی واقعی همان wallet.orgBalance است).
 
 import { NextRequest, NextResponse } from "next/server";
 import { supabaseAdmin } from "@/lib/supabase-admin";
@@ -64,21 +64,19 @@ export async function GET(req: NextRequest) {
       throw new Error("خطا در ارتباط با پایگاه داده");
     }
 
-    // 🆕 تسک ۷: برای کاربران سازمانی، موجودی و وضعیت کیف پول مشترک سازمان هم برگردانده می‌شود
-    let organization: { id: string; name: string; isActive: boolean; walletBalance: number; autoChargeEnabled: boolean } | null = null;
+    // 🆕 بند ۲۷: برای کاربران سازمانی، فقط هویت و وضعیت فعال/غیرفعال سازمان برگردانده
+    // می‌شود — موجودی واقعی همان wallet.orgBalance بالاست، نه یک عدد جداگانه اینجا.
+    let organization: { id: string; name: string; isActive: boolean; autoChargeEnabled: boolean } | null = null;
     if (userRow?.userType === "ORGANIZATIONAL" && userRow.organizationName) {
       const { data: orgRow } = await supabaseAdmin
         .from("organizations")
-        .select("id, name, isActive, walletBalance, autoChargeEnabled")
+        .select("id, name, isActive, autoChargeEnabled")
         .eq("name", userRow.organizationName)
         .maybeSingle();
       organization = orgRow || null;
     }
 
-    // 🆕 تسک ۲۰: به هر تراکنش، منبع دقیق آن (واریز از درگاه / شارژ دستی پشتیبانی /
-    // برگشت وجه / برداشت بابت رزرو و ...) اضافه می‌شود تا در کیف پول خودِ کاربر هم
-    // دقیقاً همان توضیح شفاف («این مبلغ از طریق درگاه پرداخت اضافه شد» و مشابه آن)
-    // نمایش داده شود — با همان تابع مشترکی که در تسک ۱ و ۴ برای پنل ادمین استفاده شد.
+    // 🆕 تسک ۲۰ (شفاف‌سازی تاریخچه کیف پول کاربر): هر تراکنش همراه با فیلد «source» است.
     const enrichedTransactions = (transactions ?? []).map((tx) => ({
       ...tx,
       source: classifyTransactionSource({ type: tx.type, trackingCode: tx.trackingCode }),

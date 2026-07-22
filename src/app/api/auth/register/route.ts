@@ -1,19 +1,22 @@
 // مسیر: src/app/api/auth/register/route.ts
 //
-// 🆕 تسک ۷ چک‌لیست کارفرما (تفکیک کیف پول سازمانی + شارژ خودکار + غیرفعال‌سازی سازمان):
-// وقتی کاربری با شماره‌ی موجود در لیست سفید سازمانی ثبت‌نام می‌کند، علاوه بر ساخت
-// کیف پول شخصی‌اش، حالا مطمئن می‌شویم که یک ردیف سازمان هم برای organizationName او
-// در جدول جدید `organizations` وجود دارد (ensureOrganizationExists — idempotent است،
-// اگر از قبل وجود داشته باشد کاری انجام نمی‌دهد). بدون این کار، سازمان‌هایی که فقط
-// از طریق ثبت‌نام کاربر شناخته می‌شوند (نه از طریق افزودن دستی شماره در پنل ادمین)
-// در تب «کیف پول‌های سازمانی» پنل ادمین دیده نمی‌شدند.
+// 🆕 بند ۲۷ (بازگشت کیف پول سازمانی به موجودی مستقل هر کارمند):
+// وقتی کاربری با شماره‌ی موجود در لیست سفید سازمانی ثبت‌نام می‌کند، علاوه بر
+// ساخت کیف پول شخصی/سازمانی‌اش و تضمین وجود ردیف سازمان، حالا بلافاصله بررسی
+// می‌کنیم که آیا ادمین قبلاً (از ابزار «شارژ گروهی از لیست شماره‌ها» در پنل
+// ادمین) برای همین شماره یک مبلغ «معلق» ثبت کرده یا نه — اگر بله، همان لحظه
+// روی کیف پول سازمانی تازه‌ساخته‌شده‌اش اعمال می‌شود (applyPendingOrganizationalCredits).
+// یعنی حتی اگر کارفرما لیست کارمندانی بدهد که هنوز در بالکن ثبت‌نام نکرده‌اند،
+// همین که ثبت‌نام کنند، سهم ۱۰ میلیونی‌شان (یا هر مبلغ دیگری) خودکار در کیف
+// پولشان می‌نشیند — بدون نیاز به هیچ اقدام دستی دوباره از سمت ادمین.
 
 import { NextResponse } from "next/server";
 import { supabaseAdmin } from "@/lib/supabase-admin";
 import { isOtpValid, consumeOtp } from "@/lib/otp/otpService";
 import { sendWelcomeSms } from "@/lib/sms/smsService";
 import { createSessionToken, SESSION_COOKIE } from "@/lib/auth/session";
-import { ensureOrganizationExists } from "@/lib/wallet/ensureOrganization";
+import { getOrCreateOrganizationId } from "@/lib/wallet/ensureOrganization";
+import { applyPendingOrganizationalCredits } from "@/lib/wallet/pendingOrganizationalCredits";
 
 export async function POST(request: Request) {
   try {
@@ -60,16 +63,26 @@ export async function POST(request: Request) {
 
     if (userError) throw userError;
 
-    // ۵. ساخت اتوماتیک کیف پول شخصی برای این کاربر
-    const { error: walletError } = await supabaseAdmin
+    // ۵. ساخت اتوماتیک کیف پول شخصی/سازمانی برای این کاربر
+    const { data: newWallet, error: walletError } = await supabaseAdmin
       .from("wallets")
-      .insert([{ userId: newUser.id }]);
+      .insert([{ userId: newUser.id }])
+      .select()
+      .single();
 
     if (walletError) throw walletError;
 
-    // 🆕 ۵.۵ تسک ۷: تضمین وجود ردیف سازمان (برای کیف پول مشترک سازمانی)
+    // 🆕 بند ۲۷: تضمین وجود ردیف سازمان + اعمال هر مبلغ معلقی که ادمین از قبل
+    // برای همین شماره در همین سازمان ثبت کرده بود (شارژ گروهی روی لیست کارمند)
     if (organizationName) {
-      await ensureOrganizationExists(organizationName);
+      const organizationId = await getOrCreateOrganizationId(organizationName);
+      await applyPendingOrganizationalCredits({
+        userId: newUser.id,
+        walletId: newWallet.id,
+        phoneNumber,
+        organizationName,
+        organizationId,
+      });
     }
 
     // ۶. کد تایید را مصرف‌شده علامت می‌زنیم

@@ -5,17 +5,14 @@
 // کاربر (عادی یا سازمانی) کسر می‌کند و بلافاصله رزرو را قطعی می‌کند — بدون نیاز به
 // هیچ درگاه بانکی.
 //
-// 🆕 تسک ۷ چک‌لیست کارفرما (تفکیک کیف پول سازمانی + شارژ خودکار + غیرفعال‌سازی سازمان):
-// قبل از این تغییر، هر کاربر سازمانی موجودی «سازمانی» شخصی و مجزای خودش را داشت
-// (wallets.orgBalance) — که با تعریف صفحه‌ی سازمانی («اعتبار اختصاصی سازمان که توسط
-// تمام پرسنل قابل استفاده است») در تناقض بود. از این پس:
-//   ۱. موجودی واقعی کیف پول سازمانی از جدول جدید `organizations` (فیلد walletBalance)
-//      خوانده و کسر می‌شود — یعنی یک استخر مشترک واحد برای کل پرسنل همان سازمان.
-//   ۲. اگر سازمان کاربر غیرفعال (isActive=false) شده باشد، پرداخت از کیف پول سازمانی
-//      کاملاً مسدود می‌شود (حتی اگر موجودی کافی باشد).
-//   ۳. تراکنش ثبت‌شده هم‌زمان walletId (کیف پول شخصی کاربرِ پرداخت‌کننده — برای حفظ
-//      سازگاری کامل با گزارش‌های موجود مثل «تاریخچه کیف پول» و «پرداخت‌ها») و هم
-//      organizationId (برای گزارش‌گیری در سطح کل سازمان) را دارد.
+// 🆕 بند ۲۷ (بازگشت کیف پول سازمانی به موجودی مستقل هر کارمند):
+// طبق درخواست صریح کارفرما («هرکسی استفاده کرد فقط خودش کم بشه، نه کل اعضا»)،
+// از این پس پرداخت از کیف پول سازمانی دیگر از یک استخر مشترک (organizations.walletBalance)
+// کسر نمی‌شود؛ دقیقاً از موجودی مستقل خودِ همین کاربر (wallets.orgBalance) کسر می‌شود —
+// یعنی مصرف یک کارمند هیچ اثری روی موجودی بقیه‌ی همکارانش ندارد. وضعیت فعال/غیرفعال
+// بودن خودِ سازمان (organizations.isActive) همچنان بررسی می‌شود: اگر مدیریت بالکن
+// سازمان را غیرفعال کرده باشد، هیچ‌کدام از پرسنلش نمی‌توانند از کیف پول سازمانی
+// استفاده کنند، حتی اگر موجودی شخصی‌شان کافی باشد.
 //
 // نکات امنیتی/فنی که رعایت شده (بدون تغییر نسبت به قبل):
 // ۱. این مسیر زیرمجموعه‌ی «/api/user» است، پس middleware.ts به‌صورت خودکار نشست
@@ -72,7 +69,7 @@ export async function POST(req: NextRequest, { params }: { params: Promise<{ id:
 
     const amount = Number(booking.totalPaidAmount);
 
-    // ۳. مسیر پرداخت از کیف پول سازمانی (استخر مشترک سازمان)
+    // ۳. مسیر پرداخت از کیف پول سازمانی (موجودی مستقل خودِ همین کاربر)
     if (walletType === "ORGANIZATIONAL") {
       const { data: userRow } = await supabaseAdmin
         .from("users")
@@ -89,7 +86,7 @@ export async function POST(req: NextRequest, { params }: { params: Promise<{ id:
 
       const { data: organization } = await supabaseAdmin
         .from("organizations")
-        .select("*")
+        .select("id, isActive")
         .eq("name", userRow.organizationName)
         .maybeSingle();
 
@@ -110,55 +107,57 @@ export async function POST(req: NextRequest, { params }: { params: Promise<{ id:
         );
       }
 
-      const currentOrgBalance = Number(organization.walletBalance);
-      if (currentOrgBalance < amount) {
+      let { data: personalWallet } = await supabaseAdmin.from("wallets").select("*").eq("userId", userId).maybeSingle();
+      if (!personalWallet) {
+        const { data: newWallet } = await supabaseAdmin.from("wallets").insert([{ userId }]).select().single();
+        personalWallet = newWallet;
+      }
+      if (!personalWallet) {
+        return NextResponse.json({ success: false, error: "خطا در دسترسی به کیف پول شما" }, { status: 500 });
+      }
+
+      const currentBalance = Number(personalWallet.orgBalance);
+      if (currentBalance < amount) {
         return NextResponse.json(
           {
             success: false,
-            error: "موجودی کیف پول مشترک سازمان کافی نیست",
-            currentBalance: currentOrgBalance,
+            error: "موجودی کیف پول سازمانی شما کافی نیست",
+            currentBalance,
             requiredAmount: amount,
-            shortfall: amount - currentOrgBalance,
+            shortfall: amount - currentBalance,
           },
           { status: 400 }
         );
       }
 
-      // کسر شرطی (CAS) از استخر مشترک سازمان
-      const { data: updatedOrganization } = await supabaseAdmin
-        .from("organizations")
-        .update({ walletBalance: currentOrgBalance - amount, updatedAt: new Date().toISOString() })
-        .eq("id", organization.id)
-        .eq("walletBalance", currentOrgBalance)
+      // کسر شرطی (CAS) از موجودی مستقل همین کاربر
+      const { data: updatedWallet } = await supabaseAdmin
+        .from("wallets")
+        .update({ orgBalance: currentBalance - amount, updatedAt: new Date().toISOString() })
+        .eq("id", personalWallet.id)
+        .eq("orgBalance", currentBalance)
         .select()
         .maybeSingle();
 
-      if (!updatedOrganization) {
+      if (!updatedWallet) {
         return NextResponse.json(
-          { success: false, error: "موجودی کیف پول سازمان هم‌زمان تغییر کرده است. لطفاً دوباره تلاش کنید." },
+          { success: false, error: "موجودی کیف پول شما هم‌زمان تغییر کرده است. لطفاً دوباره تلاش کنید." },
           { status: 409 }
         );
       }
 
-      // کیف پول شخصی کاربر فقط برای پیوست‌کردن walletId به تراکنش (سازگاری با گزارش‌های موجود) لازم است
-      let { data: personalWallet } = await supabaseAdmin.from("wallets").select("*").eq("userId", userId).maybeSingle();
-      if (!personalWallet) {
-        const { data: newWallet } = await supabaseAdmin.from("wallets").insert([{ userId }]).select().single();
-        if (newWallet) personalWallet = newWallet;
-      }
-
       const trackingCode = `WALLET-${booking.id.split("-")[0].toUpperCase()}`;
 
-      const rollbackOrgBalance = async () => {
+      const rollbackWalletBalance = async () => {
         await supabaseAdmin
-          .from("organizations")
-          .update({ walletBalance: currentOrgBalance, updatedAt: new Date().toISOString() })
-          .eq("id", organization.id);
+          .from("wallets")
+          .update({ orgBalance: currentBalance, updatedAt: new Date().toISOString() })
+          .eq("id", personalWallet!.id);
       };
 
       const { error: txError } = await supabaseAdmin.from("transactions").insert([
         {
-          walletId: personalWallet ? personalWallet.id : null,
+          walletId: personalWallet.id,
           organizationId: organization.id,
           amount,
           type: "WITHDRAWAL",
@@ -171,8 +170,8 @@ export async function POST(req: NextRequest, { params }: { params: Promise<{ id:
 
       if (txError) {
         console.error("Org Wallet Payment Transaction Insert Error (rolled back):", txError);
-        await rollbackOrgBalance();
-        return NextResponse.json({ success: false, error: "خطا در ثبت تراکنش؛ مبلغی از کیف پول سازمان کسر نشد" }, { status: 500 });
+        await rollbackWalletBalance();
+        return NextResponse.json({ success: false, error: "خطا در ثبت تراکنش؛ مبلغی از کیف پول شما کسر نشد" }, { status: 500 });
       }
 
       const { data: confirmedBooking } = await supabaseAdmin
@@ -185,15 +184,15 @@ export async function POST(req: NextRequest, { params }: { params: Promise<{ id:
 
       if (!confirmedBooking) {
         console.error(`Org Wallet Payment Rollback: booking ${booking.id} was no longer WAITING_FOR_PAYMENT.`);
-        await rollbackOrgBalance();
+        await rollbackWalletBalance();
         await supabaseAdmin
           .from("transactions")
           .update({ gatewayStatus: "FAILED" })
-          .eq("organizationId", organization.id)
+          .eq("bookingId", booking.id)
           .eq("trackingCode", trackingCode);
 
         return NextResponse.json(
-          { success: false, error: "این رزرو دیگر قابل پرداخت نبود. مبلغی از کیف پول سازمان کسر نشد." },
+          { success: false, error: "این رزرو دیگر قابل پرداخت نبود. مبلغی از کیف پول شما کسر نشد." },
           { status: 409 }
         );
       }
@@ -215,26 +214,27 @@ export async function POST(req: NextRequest, { params }: { params: Promise<{ id:
 
       return NextResponse.json({
         success: true,
-        message: "پرداخت از کیف پول مشترک سازمان با موفقیت انجام شد و رزرو شما قطعی گردید.",
+        message: "پرداخت از کیف پول سازمانی با موفقیت انجام شد و رزرو شما قطعی گردید.",
         booking: confirmedBooking,
       });
     }
 
-    // ۴. مسیر پرداخت از کیف پول شخصی (NORMAL) — بدون تغییر نسبت به قبل
+    // ۴. مسیر پرداخت از کیف پول شخصی (NORMAL) — بدون تغییر
     let { data: wallet } = await supabaseAdmin.from("wallets").select("*").eq("userId", userId).maybeSingle();
     if (!wallet) {
       const { data: newWallet } = await supabaseAdmin.from("wallets").insert([{ userId }]).select().single();
-      if (newWallet) wallet = newWallet;
+      wallet = newWallet;
     }
-    if (!wallet) throw new Error("کیف پول یافت نشد");
+    if (!wallet) {
+      return NextResponse.json({ success: false, error: "خطا در دسترسی به کیف پول شما" }, { status: 500 });
+    }
 
     const currentBalance = Number(wallet.normalBalance);
-
     if (currentBalance < amount) {
       return NextResponse.json(
         {
           success: false,
-          error: "موجودی کیف پول کافی نیست",
+          error: "موجودی کیف پول شما کافی نیست",
           currentBalance,
           requiredAmount: amount,
           shortfall: amount - currentBalance,
@@ -260,6 +260,13 @@ export async function POST(req: NextRequest, { params }: { params: Promise<{ id:
 
     const trackingCode = `WALLET-${booking.id.split("-")[0].toUpperCase()}`;
 
+    const rollbackNormalBalance = async () => {
+      await supabaseAdmin
+        .from("wallets")
+        .update({ normalBalance: currentBalance, updatedAt: new Date().toISOString() })
+        .eq("id", wallet!.id);
+    };
+
     const { error: txError } = await supabaseAdmin.from("transactions").insert([
       {
         walletId: wallet.id,
@@ -274,10 +281,7 @@ export async function POST(req: NextRequest, { params }: { params: Promise<{ id:
 
     if (txError) {
       console.error("Wallet Payment Transaction Insert Error (rolled back):", txError);
-      await supabaseAdmin
-        .from("wallets")
-        .update({ normalBalance: currentBalance, updatedAt: new Date().toISOString() })
-        .eq("id", wallet.id);
+      await rollbackNormalBalance();
       return NextResponse.json({ success: false, error: "خطا در ثبت تراکنش؛ مبلغی از کیف پول شما کسر نشد" }, { status: 500 });
     }
 
@@ -291,14 +295,11 @@ export async function POST(req: NextRequest, { params }: { params: Promise<{ id:
 
     if (!confirmedBooking) {
       console.error(`Wallet Payment Rollback: booking ${booking.id} was no longer WAITING_FOR_PAYMENT.`);
-      await supabaseAdmin
-        .from("wallets")
-        .update({ normalBalance: currentBalance, updatedAt: new Date().toISOString() })
-        .eq("id", wallet.id);
+      await rollbackNormalBalance();
       await supabaseAdmin
         .from("transactions")
         .update({ gatewayStatus: "FAILED" })
-        .eq("walletId", wallet.id)
+        .eq("bookingId", booking.id)
         .eq("trackingCode", trackingCode);
 
       return NextResponse.json(
@@ -329,6 +330,6 @@ export async function POST(req: NextRequest, { params }: { params: Promise<{ id:
     });
   } catch (error) {
     console.error("Pay With Wallet API Error:", error);
-    return NextResponse.json({ success: false, error: "خطا در پردازش پرداخت از کیف پول" }, { status: 500 });
+    return NextResponse.json({ success: false, error: "خطا در پردازش پرداخت" }, { status: 500 });
   }
 }

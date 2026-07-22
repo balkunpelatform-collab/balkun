@@ -12,14 +12,20 @@
 //   ADMIN-REFUND-...  → برگشت وجه به کیف پول با لغو توسط ادمین/پشتیبانی (src/app/api/admin/bookings/[id]/route.ts)
 //   ADMIN-MANUAL-...  → شارژ/کسر دستی توسط ادمین یا پشتیبانی           (src/app/api/admin/users/[id]/wallet-adjust/route.ts)
 //   WALLET-...        → برداشت بابت پرداخت مستقیم رزرو از کیف پول      (src/app/api/user/bookings/[id]/pay-with-wallet/route.ts)
+//   WALLET-PARTIAL-...→ برداشت بابت پیش‌پرداخت ترکیبی رزرو از کیف پول   (src/app/api/user/bookings/[id]/pay-partial-wallet/route.ts)
 //
-// 🆕 تسک ۷ چک‌لیست کارفرما (تفکیک کیف پول سازمانی + شارژ خودکار + غیرفعال‌سازی سازمان):
-// سه پیشوند جدید برای تراکنش‌های سطح-سازمان (که مستقیماً روی استخر مشترک سازمان انجام
-// می‌شوند، نه روی کیف پول شخصی یک کاربر خاص) اضافه شد:
+// 🆕 بند ۲۷ (بازگشت کیف پول سازمانی به موجودی مستقل هر کارمند):
+// از این پس هیچ «استخر مشترک سازمانی» وجود ندارد؛ هر تراکنش سازمانی همیشه روی
+// کیف پول مستقل خودِ یک کارمند مشخص انجام می‌شود. پیشوندهای زیر همگی همین
+// معنا را دارند، فقط منبع/محرک تراکنش را از هم تفکیک می‌کنند:
 //
-//   ORG-CHARGE-...    → شارژ دستی کیف پول مشترک سازمان توسط مدیر ارشد   (organizations/[id]/charge/route.ts)
-//   ORG-WITHDRAW-...  → کسر دستی کیف پول مشترک سازمان توسط مدیر ارشد    (organizations/[id]/charge/route.ts)
-//   ORG-AUTOCHARGE-...→ شارژ خودکار دوره‌ای کیف پول مشترک سازمان         (organizations/auto-charge/route.ts)
+//   EMP-BULKCHARGE-...→ شارژ فردیِ یک کارمند، در جریان «شارژ گروهی از لیست شماره‌ها» (bulk-charge-members/route.ts)
+//   EMP-CHARGE-REG-...→ اعمال خودکار شارژ معلق، درست لحظه‌ی ثبت‌نام همان کارمند در بالکن (auth/register/route.ts)
+//   ORG-MEMBERCHARGE-.→ شارژ دستی مبلغ مساوی به تک‌تک پرسنل فعلی سازمان، توسط مدیر ارشد (organizations/[id]/charge/route.ts)
+//   ORG-AUTOCHARGE-...→ شارژ خودکار دوره‌ای همان مبلغ مساوی به تک‌تک پرسنل فعلی سازمان     (organizations/auto-charge/route.ts)
+//
+// (پیشوندهای قدیمی ORG-CHARGE-/ORG-WITHDRAW- که به یک استخر مشترک اشاره داشتند
+// دیگر تولید نمی‌شوند؛ فقط برای سازگاری با تراکنش‌های تاریخی قبل از بند ۲۷ اینجا نگه داشته شده‌اند.)
 //
 // این فایل هم در روت جدید api/admin/wallet-history و هم در تاریخچه‌ی کیف پول خودِ کاربر
 // استفاده می‌شود تا منطق دسته‌بندی همیشه یک‌جا و هماهنگ بماند.
@@ -30,6 +36,7 @@ export type TransactionSourceCategory =
   | "REFUND"
   | "BOOKING_PAYMENT"
   | "MANUAL_WITHDRAWAL"
+  | "EMP_CHARGE"
   | "ORG_MANUAL_CHARGE"
   | "ORG_MANUAL_WITHDRAWAL"
   | "ORG_AUTO_CHARGE"
@@ -73,19 +80,35 @@ export function classifyTransactionSource(tx: MinimalTransaction): TransactionSo
         direction: "IN",
       };
     }
+    if (code.startsWith("EMP-BULKCHARGE-")) {
+      return {
+        category: "EMP_CHARGE",
+        label: "شارژ گروهی (لیست کارمندان)",
+        description: "این مبلغ توسط مدیر ارشد بالکن، در جریان شارژ گروهی سازمان از روی لیست شماره‌ها، مستقیماً به کیف پول سازمانی همین شما اضافه شد.",
+        direction: "IN",
+      };
+    }
+    if (code.startsWith("EMP-CHARGE-REG-")) {
+      return {
+        category: "EMP_CHARGE",
+        label: "شارژ سازمانی (زمان ثبت‌نام)",
+        description: "سازمان شما پیش از ثبت‌نام‌تان برایتان شارژی در نظر گرفته بود؛ همان لحظه‌ی ثبت‌نام، این مبلغ به کیف پول سازمانی‌تان اضافه شد.",
+        direction: "IN",
+      };
+    }
     if (code.startsWith("ORG-AUTOCHARGE-")) {
       return {
         category: "ORG_AUTO_CHARGE",
         label: "شارژ خودکار سازمان",
-        description: "این مبلغ به‌صورت خودکار و دوره‌ای به کیف پول مشترک سازمان اضافه شد.",
+        description: "این مبلغ به‌صورت خودکار و دوره‌ای به کیف پول سازمانی مستقل شما اضافه شد.",
         direction: "IN",
       };
     }
-    if (code.startsWith("ORG-CHARGE-")) {
+    if (code.startsWith("ORG-MEMBERCHARGE-") || code.startsWith("ORG-CHARGE-")) {
       return {
         category: "ORG_MANUAL_CHARGE",
         label: "شارژ دستی سازمان",
-        description: "این مبلغ توسط مدیر ارشد بالکن به کیف پول مشترک سازمان اضافه شد.",
+        description: "این مبلغ توسط مدیر ارشد بالکن به کیف پول سازمانی مستقل شما اضافه شد.",
         direction: "IN",
       };
     }
@@ -106,6 +129,14 @@ export function classifyTransactionSource(tx: MinimalTransaction): TransactionSo
   }
 
   // type === "WITHDRAWAL"
+  if (code.startsWith("WALLET-PARTIAL-")) {
+    return {
+      category: "BOOKING_PAYMENT",
+      label: "برداشت (پیش‌پرداخت رزرو)",
+      description: "این مبلغ بابت پیش‌پرداخت ترکیبی یک رزرو (کیف پول + درگاه) از کیف پول کسر شد.",
+      direction: "OUT",
+    };
+  }
   if (code.startsWith("WALLET-")) {
     return {
       category: "BOOKING_PAYMENT",
@@ -114,11 +145,11 @@ export function classifyTransactionSource(tx: MinimalTransaction): TransactionSo
       direction: "OUT",
     };
   }
-  if (code.startsWith("ORG-WITHDRAW-")) {
+  if (code.startsWith("ORG-MEMBERCHARGE-") || code.startsWith("ORG-WITHDRAW-")) {
     return {
       category: "ORG_MANUAL_WITHDRAWAL",
       label: "کسر دستی سازمان",
-      description: "این مبلغ توسط مدیر ارشد بالکن از کیف پول مشترک سازمان کسر شد.",
+      description: "این مبلغ توسط مدیر ارشد بالکن از کیف پول سازمانی مستقل شما کسر شد.",
       direction: "OUT",
     };
   }
@@ -145,6 +176,7 @@ export const TRANSACTION_SOURCE_CATEGORIES: { value: TransactionSourceCategory; 
   { value: "REFUND", label: "برگشت وجه" },
   { value: "BOOKING_PAYMENT", label: "برداشت بابت رزرو" },
   { value: "MANUAL_WITHDRAWAL", label: "کسر دستی (پشتیبانی)" },
+  { value: "EMP_CHARGE", label: "شارژ به کارمند (سازمانی)" },
   { value: "ORG_MANUAL_CHARGE", label: "شارژ دستی سازمان" },
   { value: "ORG_AUTO_CHARGE", label: "شارژ خودکار سازمان" },
   { value: "ORG_MANUAL_WITHDRAWAL", label: "کسر دستی سازمان" },

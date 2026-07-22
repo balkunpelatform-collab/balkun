@@ -1,14 +1,21 @@
 // مسیر: src/app/api/admin/corporate/organizations/[id]/charge/route.ts
-// این فایل جدید است — آن را در مسیر بالا در پروژه ایجاد کنید.
 //
-// 🆕 تسک ۷ چک‌لیست کارفرما (تفکیک کیف پول سازمانی + شارژ خودکار + غیرفعال‌سازی سازمان):
-// شارژ/کسر دستی کیف پول مشترک یک سازمان توسط مدیر ارشد.
-// برخلاف src/app/api/admin/users/[id]/wallet-adjust/route.ts (که موجودی شخصی یک
-// کاربر را تغییر می‌دهد)، این روت مستقیماً موجودی مشترک سازمان (organizations.walletBalance)
-// را تغییر می‌دهد — همان استخری که تمام پرسنل سازمان برای پرداخت رزرو از آن استفاده می‌کنند.
-// تراکنش ثبت‌شده walletId ندارد (چون به یک کاربر خاص تعلق ندارد) و فقط با organizationId
-// مرتبط می‌شود؛ نمایش آن در «تاریخچه کامل کیف پول» پنل ادمین با یک برچسب «کیف پول مشترک
-// سازمان» انجام می‌شود (نگاه کنید به src/app/api/admin/wallet-history/route.ts).
+// 🆕 بند ۲۷ (بازگشت کیف پول سازمانی به موجودی مستقل هر کارمند):
+// این روت قبلاً روی یک استخر مشترک (organizations.walletBalance) کار می‌کرد.
+// طبق درخواست صریح کارفرما، از این پس دیگر هیچ استخر مشترکی وجود ندارد؛ این
+// دکمه («شارژ/کسر») حالا یعنی: «همین مبلغ را، به‌طور کامل و جداگانه، به کیف
+// پول سازمانی مستقل تک‌تک پرسنل فعلی این سازمان اضافه/از آن کم کن» — دقیقاً
+// مثل زمانی که کارفرما می‌گوید «نفری ۱۰ میلیون تومان شارژ کنید»، برای کارمندانی
+// که از قبل در بالکن ثبت‌نام کرده‌اند.
+//
+// برای شارژ گروهی که هم‌زمان شامل کارمندانی می‌شود که هنوز ثبت‌نام نکرده‌اند،
+// یا وقتی می‌خواهید یک لیست شماره‌موبایل دقیق (نه «همه پرسنل فعلی») را شارژ
+// کنید، از ابزار جدید «شارژ گروهی از لیست شماره‌ها»
+// (src/app/api/admin/corporate/organizations/[id]/bulk-charge-members/route.ts) استفاده کنید.
+//
+// برای کسر (WITHDRAWAL): هر کارمندی که موجودی سازمانی‌اش کمتر از مبلغ درخواستی
+// باشد، رد می‌شود (skipped) و بقیه‌ی کارمندان طبیعی پردازش می‌شوند — تا یک نفر
+// کم‌موجودی، مانع کسر از بقیه نشود.
 //
 // دسترسی: منحصراً SUPER_ADMIN (طبق سیاست مالی بالکن، همان سطح دسترسی wallet-adjust).
 
@@ -54,70 +61,120 @@ export async function POST(request: NextRequest, { params }: RouteContext) {
     return NextResponse.json({ success: false, error: "سازمان مورد نظر یافت نشد" }, { status: 404 });
   }
 
-  const currentBalance = Number(organization.walletBalance);
-  const delta = direction === "DEPOSIT" ? numericAmount : -numericAmount;
-  const newBalance = currentBalance + delta;
+  const { data: members, error: membersError } = await supabaseAdmin
+    .from("users")
+    .select("id")
+    .eq("userType", "ORGANIZATIONAL")
+    .eq("organizationName", organization.name);
 
-  if (newBalance < 0) {
+  if (membersError) {
+    console.error("Organization Members Fetch Error:", membersError);
+    return NextResponse.json({ success: false, error: "خطا در دریافت لیست پرسنل سازمان" }, { status: 500 });
+  }
+
+  if (!members || members.length === 0) {
     return NextResponse.json(
-      { success: false, error: "موجودی کیف پول سازمان برای این مقدار کسر کافی نیست" },
+      {
+        success: false,
+        error:
+          "این سازمان هنوز هیچ پرسنل ثبت‌نام‌شده‌ای ندارد. برای شارژ افرادی که هنوز ثبت‌نام نکرده‌اند، از «شارژ گروهی از لیست شماره‌ها» استفاده کنید.",
+      },
       { status: 400 }
     );
   }
 
-  // کسر/افزایش شرطی (CAS) برای جلوگیری از Race Condition در صورت دو درخواست هم‌زمان
-  const { data: updatedOrganization } = await supabaseAdmin
-    .from("organizations")
-    .update({ walletBalance: newBalance, updatedAt: new Date().toISOString() })
-    .eq("id", organizationId)
-    .eq("walletBalance", currentBalance)
-    .select()
-    .maybeSingle();
+  let chargedCount = 0;
+  let skippedCount = 0;
+  let totalAmountMoved = 0;
 
-  if (!updatedOrganization) {
-    return NextResponse.json(
-      { success: false, error: "موجودی سازمان هم‌زمان تغییر کرده است. لطفاً دوباره تلاش کنید." },
-      { status: 409 }
-    );
+  for (let i = 0; i < members.length; i++) {
+    const memberUserId = members[i].id;
+
+    let { data: wallet } = await supabaseAdmin.from("wallets").select("*").eq("userId", memberUserId).maybeSingle();
+    if (!wallet) {
+      const { data: newWallet } = await supabaseAdmin.from("wallets").insert([{ userId: memberUserId }]).select().single();
+      wallet = newWallet;
+    }
+    if (!wallet) {
+      skippedCount++;
+      continue;
+    }
+
+    const currentBalance = Number(wallet.orgBalance);
+    const delta = direction === "DEPOSIT" ? numericAmount : -numericAmount;
+    const newBalance = currentBalance + delta;
+
+    if (newBalance < 0) {
+      // موجودی این کارمند برای کسر کافی نیست — رد می‌شود، بقیه ادامه پیدا می‌کنند
+      skippedCount++;
+      continue;
+    }
+
+    const { data: updatedWallet } = await supabaseAdmin
+      .from("wallets")
+      .update({ orgBalance: newBalance, updatedAt: new Date().toISOString() })
+      .eq("id", wallet.id)
+      .eq("orgBalance", currentBalance)
+      .select()
+      .maybeSingle();
+
+    if (!updatedWallet) {
+      // موجودی هم‌زمان تغییر کرده بود؛ این نفر رد می‌شود، بقیه ادامه پیدا می‌کنند
+      skippedCount++;
+      continue;
+    }
+
+    const { error: txError } = await supabaseAdmin.from("transactions").insert([
+      {
+        walletId: wallet.id,
+        organizationId: organization.id,
+        amount: numericAmount,
+        type: direction,
+        walletType: "ORGANIZATIONAL",
+        gatewayStatus: "SUCCESS",
+        trackingCode: `ORG-MEMBERCHARGE-${admin.userId.slice(0, 8)}-${i}`,
+      },
+    ]);
+
+    if (txError) {
+      console.error("Org Member Charge Transaction Insert Error (rolled back for this member):", txError);
+      await supabaseAdmin
+        .from("wallets")
+        .update({ orgBalance: currentBalance, updatedAt: new Date().toISOString() })
+        .eq("id", wallet.id);
+      skippedCount++;
+      continue;
+    }
+
+    chargedCount++;
+    totalAmountMoved += numericAmount;
   }
 
-  const trackingCode = `ORG-${direction === "DEPOSIT" ? "CHARGE" : "WITHDRAW"}-${admin.userId.slice(0, 8)}`;
-
-  const { error: txError } = await supabaseAdmin.from("transactions").insert([
-    {
-      walletId: null,
-      organizationId,
-      amount: numericAmount,
-      type: direction,
-      walletType: "ORGANIZATIONAL",
-      gatewayStatus: "SUCCESS",
-      trackingCode,
-    },
-  ]);
-
-  if (txError) {
-    // Rollback: ثبت تراکنش شکست خورد، پس موجودی تغییریافته را برمی‌گردانیم
-    console.error("Organization Charge Transaction Insert Error (rolled back):", txError);
-    await supabaseAdmin
-      .from("organizations")
-      .update({ walletBalance: currentBalance, updatedAt: new Date().toISOString() })
-      .eq("id", organizationId);
-    return NextResponse.json({ success: false, error: "خطا در ثبت تراکنش؛ موجودی سازمان تغییر نکرد" }, { status: 500 });
-  }
+  // مجموع فعلی موجودی واقعی تمام پرسنل این سازمان (برای بازگرداندن به فرانت‌اند، جهت رفرش جدول)
+  const { data: walletsAfter } = await supabaseAdmin
+    .from("wallets")
+    .select("orgBalance")
+    .in("userId", members.map((m) => m.id));
+  const totalMemberBalance = (walletsAfter || []).reduce((sum, w) => sum + Number(w.orgBalance), 0);
 
   await logAdminAction({
     adminId: admin.userId,
     actionType: "ORGANIZATION_CHANGE",
     description: `${direction === "DEPOSIT" ? "شارژ دستی" : "کسر دستی"} ${numericAmount.toLocaleString(
       "fa-IR"
-    )} تومان ${direction === "DEPOSIT" ? "به" : "از"} کیف پول مشترک سازمان «${organization.name}» — دلیل: ${reason.trim()}`,
-    previousValue: String(currentBalance),
-    newValue: String(newBalance),
+    )} تومان ${direction === "DEPOSIT" ? "به" : "از"} کیف پول سازمانی هرکدام از پرسنل «${organization.name}» — ${chargedCount} نفر اعمال شد${
+      skippedCount > 0 ? `، ${skippedCount} نفر رد شد (موجودی ناکافی یا خطا)` : ""
+    } — دلیل: ${reason.trim()}`,
+    previousValue: String(members.length),
+    newValue: `${chargedCount} نفر شارژ شدند`,
   });
 
   return NextResponse.json({
     success: true,
-    organization: updatedOrganization,
-    message: "موجودی سازمان با موفقیت به‌روزرسانی شد",
+    organization: { ...organization, walletBalance: totalMemberBalance, memberCount: members.length },
+    chargedCount,
+    skippedCount,
+    totalAmountMoved,
+    message: `عملیات روی ${chargedCount} نفر از پرسنل انجام شد${skippedCount > 0 ? ` (${skippedCount} نفر رد شدند)` : ""}`,
   });
 }

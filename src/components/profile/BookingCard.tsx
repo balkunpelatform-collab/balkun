@@ -26,6 +26,13 @@
 // باقیمانده به درگاه بانکی هدایت می‌کند — به‌جای اینکه یا منتظر شارژ کامل کیف پول بماند،
 // یا کل مبلغ رزرو دوباره از درگاه کسر شود. «مبلغ قابل پرداخت» در این مودال هم از این پس
 // amountDue (یعنی totalPaidAmount منهای هر مبلغی که قبلاً اعمال شده) است، نه کل مبلغ رزرو.
+//
+// 🆕 بند ۲۷ (بازگشت کیف پول سازمانی به موجودی مستقل هر کارمند):
+// طبق درخواست صریح کارفرما، دیگر هیچ استخر مشترک سازمانی وجود ندارد. بنابراین این فایل
+// حالا دوباره برعکسِ توضیح تسک ۷ بالا عمل می‌کند: موجودی سازمانی از data.wallet.orgBalance
+// خوانده می‌شود (که از این پس دوباره موجودی واقعی و مستقل خودِ همین کاربر است)، نه از
+// data.organization.walletBalance (که دیگر توسط API برگردانده نمی‌شود). سه تغییر دقیق این
+// بند، هرکدام با کامنت 🆕 بند ۲۷ داخل فایل مشخص شده‌اند.
 
 "use client";
 
@@ -51,10 +58,11 @@ const STATUS_MAP: Record<string, { label: string; color: string; bg: string }> =
 // 🆕 تسک ۲ (۲۰۲۶/۰۷/۱۱) — پرداخت مستقیم رزرو از موجودی کیف پول
 type WalletBalances = { normalBalance: number; orgBalance: number };
 
-// 🔧 اصلاح تسک ۷: اطلاعات کیف پول مشترک سازمان (از فیلد organization در پاسخ /api/user/wallet)
+// 🆕 بند ۲۷: فیلد walletBalance عمداً از این تایپ حذف شد — API دیگر آن را برنمی‌گرداند.
+// موجودی واقعی کیف پول سازمانی از این پس همیشه از data.wallet.orgBalance خوانده می‌شود
+// (نگاه کنید به openWalletModal پایین‌تر)، نه از خودِ آبجکت organization.
 interface OrganizationWalletInfo {
   isActive: boolean;
-  walletBalance: number;
 }
 
 export default function BookingCard({ booking }: { booking: Booking }) {
@@ -111,8 +119,9 @@ export default function BookingCard({ booking }: { booking: Booking }) {
   };
 
   // 🆕 تسک ۲ — باز کردن مودال پرداخت از کیف پول و دریافت موجودی به‌روز
-  // 🔧 اصلاح تسک ۷: موجودی سازمانی از data.organization.walletBalance خوانده می‌شود،
-  // نه از data.wallet.orgBalance (که همیشه ۰ است). وضعیت فعال/غیرفعال سازمان هم ذخیره می‌شود.
+  // 🆕 بند ۲۷: موجودی سازمانی از این پس از data.wallet.orgBalance خوانده می‌شود
+  // (موجودی مستقل و واقعی خودِ همین کاربر)، نه از data.organization.walletBalance.
+  // وضعیت فعال/غیرفعال سازمان همچنان از data.organization.isActive خوانده می‌شود.
   const openWalletModal = async () => {
     setIsWalletModalOpen(true);
     setWalletError("");
@@ -124,12 +133,14 @@ export default function BookingCard({ booking }: { booking: Booking }) {
       const res = await fetch("/api/user/wallet");
       const data = await res.json();
       if (data.success && data.wallet) {
+        // 🆕 بند ۲۷: قبلاً { isActive, walletBalance: Number(data.organization.walletBalance) }
         const orgInfo: OrganizationWalletInfo | null = data.organization
-          ? { isActive: Boolean(data.organization.isActive), walletBalance: Number(data.organization.walletBalance) }
+          ? { isActive: Boolean(data.organization.isActive) }
           : null;
         const balances: WalletBalances = {
           normalBalance: Number(data.wallet.normalBalance),
-          orgBalance: orgInfo ? orgInfo.walletBalance : 0,
+          // 🆕 بند ۲۷: قبلاً orgInfo ? orgInfo.walletBalance : 0
+          orgBalance: Number(data.wallet.orgBalance),
         };
         setOrganizationInfo(orgInfo);
         setWalletBalances(balances);
@@ -315,10 +326,10 @@ export default function BookingCard({ booking }: { booking: Booking }) {
                       )}
                     </button>
 
-                    {/* 🔧 اصلاح تسک ۷: گزینه‌ی کیف پول سازمانی حالا موجودی واقعی مشترک سازمان
-                        (organization.walletBalance) را نشان می‌دهد، نه فیلد قدیمی و همیشه-صفرِ
-                        wallet.orgBalance. اگر سازمان غیرفعال باشد یا هنوز در سیستم ثبت نشده باشد،
-                        پیام روشن مربوطه نشان داده می‌شود و امکان انتخاب/پرداخت مسدود می‌ماند. */}
+                    {/* 🆕 بند ۲۷: گزینه‌ی کیف پول سازمانی حالا موجودی مستقل و واقعیِ خودِ همین
+                        کاربر (wallet.orgBalance) را نشان می‌دهد، نه یک استخر مشترک بین کل پرسنل
+                        سازمان. اگر سازمان غیرفعال باشد یا هنوز در سیستم ثبت نشده باشد، پیام روشن
+                        مربوطه نشان داده می‌شود و امکان انتخاب/پرداخت مسدود می‌ماند. */}
                     {isOrganizational && (
                       <button
                         onClick={() => {
@@ -339,7 +350,7 @@ export default function BookingCard({ booking }: { booking: Booking }) {
                           <span className="text-xs font-black text-slate-700">کیف پول سازمانی</span>
                           <span className="text-[10px] font-bold text-slate-400">
                             {organizationInfo
-                              ? `موجودی مشترک سازمان: ${formatPrice(walletBalances.orgBalance)} تومان`
+                              ? `موجودی کیف پول سازمانی شما: ${formatPrice(walletBalances.orgBalance)} تومان`
                               : "سازمان شما هنوز در سیستم کیف پول ثبت نشده است"}
                           </span>
                         </div>

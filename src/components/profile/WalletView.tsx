@@ -8,12 +8,18 @@
 // حذف شد — شارژ کیف پول سازمانی از این پس فقط توسط مدیر ارشد بالکن (دستی یا خودکار)
 // از پنل ادمین انجام می‌شود. اگر سازمان توسط مدیریت غیرفعال شده باشد، یک بنر هشدار
 // به‌جای دکمه نمایش داده می‌شود.
+//
+// 🆕 بند ۲۷ (بازگشت کیف پول سازمانی به موجودی مستقل هر کارمند):
+// طبق درخواست صریح کارفرما، دیگر هیچ استخر مشترکی بین پرسنل یک سازمان وجود ندارد.
+// بنابراین از این پس wallet.orgBalance دوباره معنای واقعی و مستقل خودش را دارد
+// (دقیقاً برعکس توضیح تسک ۷ بالا) و این کارت آن را نشان می‌دهد، نه organization.walletBalance
+// را (که اصلاً دیگر توسط API برگردانده نمی‌شود). خط تغییرکرده مشخص شده با 🆕 پایین‌تر.
 
 "use client";
 
 import { useEffect, useState } from "react";
 import { useRouter } from "next/navigation";
-import { Wallet as WalletIcon, TrendingUp, TrendingDown, Loader2, Plus, CreditCard, X, AlertTriangle, Users } from "lucide-react";
+import { Wallet as WalletIcon, TrendingUp, TrendingDown, Loader2, Plus, CreditCard, X, AlertTriangle, User as UserIcon } from "lucide-react";
 import { formatPrice } from "@/utils/priceCalculator";
 import type { Wallet, Transaction, UserType } from "@/types/database";
 
@@ -26,8 +32,9 @@ interface OrganizationWalletInfo {
   id: string;
   name: string;
   isActive: boolean;
-  walletBalance: number;
   autoChargeEnabled: boolean;
+  // 🆕 بند ۲۷: فیلد walletBalance عمداً از این تایپ حذف شد چون API دیگر آن را
+  // برنمی‌گرداند — موجودی واقعی از این پس همیشه wallet.orgBalance است.
 }
 
 // 🆕 تسک ۲۰ (شفاف‌سازی تاریخچه کیف پول کاربر): از این پس هر تراکنشی که از
@@ -53,7 +60,7 @@ export default function WalletView({ userId, userType }: WalletViewProps) {
   const [walletData, setWalletData] = useState<WalletData | null>(null);
   const [isLoading, setIsLoading] = useState(true);
   const [error, setError] = useState("");
-  
+
   // مدال شارژ (فقط برای کیف پول شخصی — نگاه کنید به توضیح بالای فایل)
   const [isChargeModalOpen, setIsChargeModalOpen] = useState(false);
   const [chargeAmount, setChargeAmount] = useState("");
@@ -204,8 +211,10 @@ export default function WalletView({ userId, userType }: WalletViewProps) {
                 </div>
                 <div className="flex flex-col">
                   <span className="text-xs font-bold opacity-80">کیف پول سازمانی</span>
+                  {/* 🆕 بند ۲۷: قبلاً «مشترک بین تمام پرسنل» — چون دیگر استخر مشترک نداریم،
+                      حالا صریحاً گفته می‌شود این موجودی مخصوص خودِ همین کاربر است */}
                   <span className="text-[10px] opacity-60 flex items-center gap-1">
-                    <Users className="w-3 h-3" /> مشترک بین تمام پرسنل {organization?.name ? `«${organization.name}»` : "سازمان"}
+                    <UserIcon className="w-3 h-3" /> سهم اختصاصی شما در {organization?.name ? `«${organization.name}»` : "سازمان"}
                   </span>
                 </div>
               </div>
@@ -219,7 +228,9 @@ export default function WalletView({ userId, userType }: WalletViewProps) {
               </div>
             ) : (
               <div className="flex flex-col gap-1">
-                <span className="text-3xl md:text-4xl font-black tracking-tight">{formatPrice(organization?.walletBalance ?? 0)}</span>
+                {/* 🆕 بند ۲۷: قبلاً {formatPrice(organization?.walletBalance ?? 0)} — حالا
+                    موجودی مستقل و واقعی خودِ همین کاربر از wallet.orgBalance خوانده می‌شود */}
+                <span className="text-3xl md:text-4xl font-black tracking-tight">{formatPrice(wallet.orgBalance)}</span>
                 <span className="text-sm font-bold opacity-70">تومان</span>
               </div>
             )}
@@ -232,9 +243,11 @@ export default function WalletView({ userId, userType }: WalletViewProps) {
         <div className="bg-balkun-orange/10 border border-balkun-orange/20 rounded-2xl p-4 flex gap-3">
           <CreditCard className="w-5 h-5 text-balkun-orange shrink-0 mt-0.5" />
           <p className="text-xs font-medium text-slate-600 leading-relaxed">
-            کیف پول سازمانی یک استخر مشترک است که توسط مدیریت بالکن برای سازمان شما شارژ می‌شود
-            (به‌صورت دستی یا خودکار طبق قرارداد سازمان شما) و تمام پرسنل سازمان می‌توانند از همین
-            موجودی برای پرداخت رزرو استفاده کنند.
+            {/* 🆕 بند ۲۷: متن اصلاح شد — این دیگر یک استخر مشترک نیست */}
+            کیف پول سازمانی سهمی اختصاصی و مستقل است که توسط مدیریت بالکن برای شما در نظر
+            گرفته می‌شود (به‌صورت دستی یا خودکار طبق قرارداد سازمان شما) و فقط خودِ شما
+            می‌توانید از آن برای پرداخت رزرو استفاده کنید؛ استفاده‌ی شما هیچ اثری روی
+            موجودی سایر همکاران این سازمان ندارد.
           </p>
         </div>
       )}
