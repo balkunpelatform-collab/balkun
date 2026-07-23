@@ -10,24 +10,12 @@
 // نکته‌ی مهم درباره‌ی ۴۰۴: این صفحه فقط پست‌هایی را نشان می‌دهد که وضعیت‌شان دقیقاً
 // «PUBLISHED» (منتشر شده) باشد.
 //
-// 🆕 بازطراحی کامل UI/UX این صفحه (طبق درخواست: عکس کامل دیده نشود + عنوان/دسته‌بندی/
-// بازگشت همه توی هم بودن):
-//
-// ۱) عکس کامل دیده نمی‌شد چون قبلاً با «object-cover» داخل یک باکس با ارتفاع ثابت
-//    (۲۲۴ تا ۳۸۴ پیکسل) نمایش داده می‌شد؛ یعنی هر عکسی که نسبت ابعادش با آن باکس
-//    یکی نبود (مثلاً عکس عمودی، یا عکسی که مستطیل کاملاً پهن نبود)، از بالا/پایین یا
-//    چپ/راست برش می‌خورد. الان یک تکنیک دو-لایه استفاده شده: یک نسخه‌ی بلورشده و
-//    بزرگ‌نمایی‌شده از همان عکس، پس‌زمینه‌ی باکس را کامل و زیبا پر می‌کند، و خودِ عکس
-//    اصلی روی آن با «object-contain» قرار می‌گیرد — یعنی از این به بعد، تحت هیچ
-//    شرایطی هیچ بخشی از عکس برش نمی‌خورد و کل تصویر همیشه کامل دیده می‌شود.
-// ۲) بخش بالای صفحه (دکمه بازگشت، دسته‌بندی، عنوان، تاریخ) قبلاً همه با فاصله‌ی کم و
-//    یک اندازه‌ی نزدیک به هم، زیر هم چیده شده بودند و سلسله‌مراتب بصری نداشتند. الان:
-//    دکمه‌ی «بازگشت» کوچک و کم‌رنگ (چون فقط یک لینک کمکی است، نه بخش اصلی صفحه)،
-//    دسته‌بندی به‌صورت یک برچسب کوچک بالای عنوان (eyebrow)، عنوان با فونت خیلی بزرگ و
-//    پررنگ، و ردیف تاریخ/زمان مطالعه با یک خط جداکننده از بقیه‌ی صفحه فاصله گرفته‌اند.
-// ۳) به‌عنوان یک بهبود جانبی، برچسب دسته‌بندی الان قابل کلیک است (به لیست همان دسته‌
-//    می‌رود) و یک تخمین «زمان مطالعه» هم خودکار از روی طول متن پست محاسبه و کنار
-//    تاریخ نمایش داده می‌شود.
+// 🆕 رفع باگ UI: «بازگشت به بلاگ» و برچسب دسته‌بندی توی هم بودند.
+// علتش این بود که هر دو Link به‌صورت inline-flex/inline-block رندر می‌شدند؛ چون
+// المان‌های inline هستند، تا وقتی جا داشته باشند کنار هم روی یک خط می‌مانند —
+// margin-bottom روی المان inline باعث شکستن خط نمی‌شود. الان هر دو داخل یک
+// wrapper با flex-col قرار گرفته‌اند تا همیشه، مستقل از عرض صفحه، دقیقاً زیر هم
+// (نه کنار هم) قرار بگیرند.
 
 import { notFound } from "next/navigation";
 import Link from "next/link";
@@ -74,7 +62,7 @@ function formatJalaliDate(value: string): string {
   }
 }
 
-// 🆕 تخمین زمان مطالعه از روی تعداد کلمات متن پست (میانگین ~۱۸۰ کلمه در دقیقه)
+// تخمین زمان مطالعه از روی تعداد کلمات متن پست (میانگین ~۱۸۰ کلمه در دقیقه)
 function estimateReadingMinutes(content: string): number {
   const wordCount = content.trim().split(/\s+/).filter(Boolean).length;
   return Math.max(1, Math.ceil(wordCount / 180));
@@ -116,21 +104,23 @@ export default async function BlogPostPage({ params }: BlogPostPageProps) {
 
   return (
     <article className="container mx-auto px-4 py-8 md:py-14 max-w-3xl">
-      {/* بازگشت به بلاگ — لینک کمکی و کوچک، رقیب عنوان اصلی نیست */}
-      <Link
-        href="/blog"
-        className="inline-flex items-center gap-1.5 text-sm font-bold text-slate-500 hover:text-balkun-cyan transition-colors mb-8 focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-balkun-cyan/40 rounded-md"
-      >
-        <ArrowRight className="w-4 h-4" /> بازگشت به بلاگ
-      </Link>
+      {/* 🆕 بازگشت به بلاگ + دسته‌بندی: هر دو داخل یک wrapper با flex-col تا همیشه
+          زیر هم قرار بگیرند و هرگز کنار هم/توی هم نشوند (چون خودشان inline هستند) */}
+      <div className="flex flex-col items-start gap-4 mb-6">
+        <Link
+          href="/blog"
+          className="inline-flex items-center gap-1.5 text-sm font-bold text-slate-500 hover:text-balkun-cyan transition-colors focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-balkun-cyan/40 rounded-md"
+        >
+          <ArrowRight className="w-4 h-4" /> بازگشت به بلاگ
+        </Link>
 
-      {/* دسته‌بندی: به‌صورت یک برچسب کوچک (eyebrow) بالای عنوان، و قابل کلیک */}
-      <Link
-        href={`/blog?category=${post.category}`}
-        className="inline-block bg-balkun-cyan/10 text-balkun-cyan text-xs font-bold px-3 py-1.5 rounded-full mb-5 hover:bg-balkun-cyan/20 transition-colors focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-balkun-cyan/40"
-      >
-        {getBlogCategoryLabel(post.category)}
-      </Link>
+        <Link
+          href={`/blog?category=${post.category}`}
+          className="inline-block bg-balkun-cyan/10 text-balkun-cyan text-xs font-bold px-3 py-1.5 rounded-full hover:bg-balkun-cyan/20 transition-colors focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-balkun-cyan/40"
+        >
+          {getBlogCategoryLabel(post.category)}
+        </Link>
+      </div>
 
       <h1 className="text-3xl sm:text-4xl md:text-5xl font-black text-balkun-navy leading-[1.3] md:leading-[1.25] mb-6">
         {post.title}

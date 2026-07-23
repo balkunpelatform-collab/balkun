@@ -1,11 +1,14 @@
 // مسیر: src/app/api/admin/blog/[id]/route.ts
 // همانند route.ts اصلی، تمام عملیات (GET/PATCH/DELETE) با کلید تب "blog" کنترل می‌شوند.
+//
+// 🆕 رفع باگ ۴۰۴ اسلاگ فارسی: اسلاگ جدید حالا سمت سرور هم باید فقط انگلیسی باشد؛
+// دیگر از generateSlugFromTitle (که حروف فارسی را نگه می‌داشت) استفاده نمی‌شود.
 
 import { NextRequest, NextResponse } from "next/server";
 import { supabaseAdmin } from "@/lib/supabase-admin";
 import { requireAdminTabAccess } from "@/lib/auth/adminAuth";
 import { BLOG_CATEGORIES } from "@/constants/blogCategories";
-import { generateSlugFromTitle } from "@/utils/generateSlug";
+import { isEnglishSlug, normalizeEnglishSlug } from "@/utils/generateSlug";
 import { BlogPostStatus } from "@/types/database";
 
 interface RouteContext {
@@ -50,10 +53,16 @@ export async function PATCH(request: NextRequest, { params }: RouteContext) {
 
     const updates: Record<string, unknown> = { ...body, updatedAt: new Date().toISOString() };
 
-    // اسلاگ جدید (در صورت ارسال) باید یکتا بماند
+    // 🆕 اسلاگ جدید (در صورت ارسال) باید فقط انگلیسی و یکتا باشد
     if (body.slug?.trim()) {
-      const newSlug = generateSlugFromTitle(body.slug);
-      if (newSlug && newSlug !== current.slug) {
+      const newSlug = normalizeEnglishSlug(body.slug);
+      if (!newSlug || !isEnglishSlug(newSlug)) {
+        return NextResponse.json(
+          { success: false, error: "فقط اسلاگ انگلیسی مجاز است (حروف کوچک، عدد و خط‌تیره)" },
+          { status: 400 }
+        );
+      }
+      if (newSlug !== current.slug) {
         const { data: existing } = await supabaseAdmin
           .from("blog_posts")
           .select("id")

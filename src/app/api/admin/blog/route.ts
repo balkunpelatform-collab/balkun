@@ -2,14 +2,18 @@
 // مدیریت بلاگ یک عملیات مالی/حساس نیست (برخلاف تغییر نقش، شارژ کیف پول، حذف رزرو یا
 // ویرایش/حذف اقامتگاه که طبق تصمیم معماری فاز ۱۱/بخش ۳ همیشه SUPER_ADMIN-only می‌مانند).
 // به همین دلیل تمام عملیات این روت (GET و POST) صرفاً با requireAdminTabAccess و کلید
-// "blog" کنترل می‌شوند: هر SUPER_ADMIN، و هر SUPPORT_AGENT که مدیر ارشد تب "blog" را
-// برایش فعال کرده باشد، اجازه مدیریت کامل بلاگ (شامل ایجاد/ویرایش/حذف پست) را دارد.
+// "blog" کنترل می‌شوند.
+//
+// 🆕 رفع باگ ۴۰۴ اسلاگ فارسی: قبلاً اگر اسلاگ ارسال نمی‌شد، به‌صورت خودکار (حتی با
+// حروف فارسی) از روی عنوان ساخته می‌شد که در عمل باعث ۴۰۴ می‌شد. الان اسلاگ الزامی
+// است و باید فقط انگلیسی باشد؛ این اعتبارسنجی هم در فرم ادمین (سمت کلاینت) و هم اینجا
+// (سمت سرور) انجام می‌شود تا حتی در فراخوانی مستقیم API هم اسلاگ نامعتبر ذخیره نشود.
 
 import { NextRequest, NextResponse } from "next/server";
 import { supabaseAdmin } from "@/lib/supabase-admin";
 import { requireAdminTabAccess } from "@/lib/auth/adminAuth";
 import { BLOG_CATEGORIES } from "@/constants/blogCategories";
-import { generateSlugFromTitle } from "@/utils/generateSlug";
+import { isEnglishSlug, normalizeEnglishSlug } from "@/utils/generateSlug";
 import { BlogPost, BlogPostStatus } from "@/types/database";
 
 const VALID_STATUSES: BlogPostStatus[] = ["DRAFT", "PUBLISHED"];
@@ -74,11 +78,20 @@ export async function POST(request: NextRequest) {
       return NextResponse.json({ success: false, error: "عنوان پست الزامی است" }, { status: 400 });
     }
 
-    const status: BlogPostStatus = body.status === "PUBLISHED" ? "PUBLISHED" : "DRAFT";
+    // 🆕 اسلاگ دیگر از روی عنوان ساخته نمی‌شود؛ باید صراحتاً ارسال شود و فقط انگلیسی باشد
+    if (!body.slug?.trim()) {
+      return NextResponse.json({ success: false, error: "اسلاگ (آدرس اینترنتی) الزامی است" }, { status: 400 });
+    }
 
-    // اسلاگ: یا همان چیزی که کاربر دستی وارد کرده، یا تولید خودکار از روی عنوان
-    let slug = body.slug?.trim() ? generateSlugFromTitle(body.slug) : generateSlugFromTitle(body.title);
-    if (!slug) slug = `post-${Date.now()}`;
+    let slug = normalizeEnglishSlug(body.slug);
+    if (!slug || !isEnglishSlug(slug)) {
+      return NextResponse.json(
+        { success: false, error: "فقط اسلاگ انگلیسی مجاز است (حروف کوچک، عدد و خط‌تیره)" },
+        { status: 400 }
+      );
+    }
+
+    const status: BlogPostStatus = body.status === "PUBLISHED" ? "PUBLISHED" : "DRAFT";
 
     // بررسی یکتا بودن اسلاگ؛ در صورت تکراری بودن، یک پسوند عددی اضافه می‌شود
     const { data: existing } = await supabaseAdmin.from("blog_posts").select("id").eq("slug", slug).maybeSingle();

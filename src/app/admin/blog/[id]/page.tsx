@@ -1,28 +1,30 @@
 // مسیر: src/app/admin/blog/[id]/page.tsx
 // فرم ایجاد/ویرایش پست بلاگ (دقیقاً هم‌الگو با admin/accommodations/[id]/page.tsx):
 // وقتی id برابر رشته‌ی "new" باشد، فرم در حالت «ایجاد» است.
-// این صفحه اولین مصرف‌کننده‌ی واقعی روت آپلود تصویر (api/admin/upload) در کل پروژه است.
 //
-// 🆕 تسک ۵ چک‌لیست کارفرما (تصاویر باید به‌صورت لینک قرار داده شوند + خطای 404 در بلاگ):
-// ۱) علاوه بر آپلود فایل از روی دستگاه، حالا یک حالت دوم هم اضافه شد: چسباندن مستقیم
-//    «لینک تصویر» (آدرس اینترنتی یک عکس از جای دیگر). چون ستون coverImage در دیتابیس
-//    از قبل صرفاً یک متن (URL) است، این حالت نیازی به تغییر دیتابیس نداشت.
-// ۲) کنار فیلد «وضعیت انتشار» یک تذکر واضح اضافه شد: تا وقتی پست روی «منتشر شده»
-//    تنظیم نشود، لینک عمومی آن (/blog/...) در سایت باز نمی‌شود و صفحه‌اش ۴۰۴ (یافت
-//    نشد) نشان می‌دهد — این رفتار همیشه همینطور بوده، اما چون در پنل قدیم جایی گفته
-//    نشده بود، باعث می‌شد افراد غیرفنی گمان کنند بلاگ «خراب» است.
+// 🆕 رفع باگ ۴۰۴ اسلاگ فارسی — با تصمیم جدید: اسلاگ فقط انگلیسی مجاز است.
+// قبلاً اسلاگ خودکار از روی عنوان (حتی وقتی فارسی بود) ساخته می‌شد که در عمل باعث
+// ۴۰۴ می‌شد. الان:
+// ۱) اسلاگ دیگر خودکار از روی عنوان ساخته نمی‌شود؛ ادمین باید خودش اسلاگ انگلیسی
+//    را تایپ کند.
+// ۲) هنگام ذخیره، اگر اسلاگ خالی باشد یا شامل کاراکتر غیرانگلیسی (مثلاً فارسی) باشد،
+//    ذخیره متوقف می‌شود، صفحه به‌صورت نرم به فیلد اسلاگ اسکرول می‌شود، همان فیلد
+//    فوکوس می‌گیرد و پیام خطای «فقط اسلاگ انگلیسی مجاز است» نمایش داده می‌شود.
+// ۳) کنار فیلد اسلاگ یک نکته اضافه شده: وقتی از هوش مصنوعی برای تولید محتوای پست
+//    کمک گرفته می‌شود، در پرامپت باید صراحتاً خواسته شود که اسلاگ/لینک پست به
+//    صورت انگلیسی و برگرفته از عنوان باشد.
 
 "use client";
 
-import { useEffect, useState, use } from "react";
+import { useEffect, useState, useRef, use } from "react";
 import { useRouter } from "next/navigation";
 import Image from "next/image";
 import {
   ArrowRight, Save, Loader2, FileText, Image as ImageIcon,
-  Search as SearchIcon, UploadCloud, X, Link as LinkIcon, AlertTriangle
+  Search as SearchIcon, UploadCloud, X, Link as LinkIcon, AlertTriangle, Info
 } from "lucide-react";
 import { BLOG_CATEGORIES } from "@/constants/blogCategories";
-import { generateSlugFromTitle } from "@/utils/generateSlug";
+import { isEnglishSlug, normalizeEnglishSlug } from "@/utils/generateSlug";
 
 export default function AdminBlogFormPage({ params }: { params: Promise<{ id: string }> }) {
   const router = useRouter();
@@ -33,9 +35,12 @@ export default function AdminBlogFormPage({ params }: { params: Promise<{ id: st
   const [isSaving, setIsSaving] = useState(false);
   const [isUploading, setIsUploading] = useState(false);
   const [error, setError] = useState("");
-  const [slugTouched, setSlugTouched] = useState(false);
+  const [slugError, setSlugError] = useState("");
 
-  // 🆕 تسک ۵: نحوه‌ی تامین تصویر کاور — آپلود فایل یا چسباندن لینک
+  // 🆕 برای اسکرول/فوکوس خودکار روی فیلد اسلاگ وقتی نامعتبر است
+  const slugInputRef = useRef<HTMLInputElement>(null);
+
+  // نحوه‌ی تامین تصویر کاور — آپلود فایل یا چسباندن لینک
   const [imageMode, setImageMode] = useState<"upload" | "link">("upload");
   const [imageLinkInput, setImageLinkInput] = useState("");
 
@@ -63,7 +68,6 @@ export default function AdminBlogFormPage({ params }: { params: Promise<{ id: st
           metaTitle: post.metaTitle || "", metaDescription: post.metaDescription || "",
         });
         setImageLinkInput(post.coverImage || "");
-        setSlugTouched(true);
       } else {
         setError(data.error);
       }
@@ -74,13 +78,15 @@ export default function AdminBlogFormPage({ params }: { params: Promise<{ id: st
     }
   };
 
-  // تولید خودکار اسلاگ از روی عنوان، فقط تا زمانی که کاربر خودش دستی اسلاگ را ویرایش نکرده باشد
+  // 🆕 اسلاگ دیگر به‌صورت خودکار از روی عنوان ساخته نمی‌شود (چون عنوان معمولاً
+  // فارسی است و اسلاگ فارسی ذخیره نمی‌شود) — فقط خود عنوان به‌روزرسانی می‌شود.
   const handleTitleChange = (value: string) => {
-    setFormData((prev) => ({
-      ...prev,
-      title: value,
-      slug: slugTouched ? prev.slug : generateSlugFromTitle(value),
-    }));
+    setFormData((prev) => ({ ...prev, title: value }));
+  };
+
+  const focusSlugField = () => {
+    slugInputRef.current?.scrollIntoView({ behavior: "smooth", block: "center" });
+    slugInputRef.current?.focus();
   };
 
   const handleImageUpload = async (file: File) => {
@@ -121,12 +127,24 @@ export default function AdminBlogFormPage({ params }: { params: Promise<{ id: st
 
   const handleSubmit = async (e: React.FormEvent) => {
     e.preventDefault();
-    setIsSaving(true);
     setError("");
+    setSlugError("");
+
+    // 🆕 اعتبارسنجی اسلاگ پیش از هر چیز: فقط انگلیسی مجاز است
+    const normalizedSlug = normalizeEnglishSlug(formData.slug);
+    if (!normalizedSlug || !isEnglishSlug(normalizedSlug)) {
+      const message = "فقط اسلاگ انگلیسی مجاز است. لطفاً اسلاگ را با حروف انگلیسی کوچک، عدد و خط‌تیره وارد کنید (مثال: my-post-title).";
+      setSlugError(message);
+      setError(message);
+      focusSlugField();
+      return;
+    }
+
+    setIsSaving(true);
 
     const payload = {
       ...formData,
-      slug: generateSlugFromTitle(formData.slug),
+      slug: normalizedSlug,
       tags: formData.tags.split("،").map((t) => t.trim()).filter(Boolean),
     };
 
@@ -189,13 +207,27 @@ export default function AdminBlogFormPage({ params }: { params: Promise<{ id: st
           <div>
             <label className="text-xs font-bold text-slate-500 mb-1 block">
               اسلاگ (آدرس اینترنتی پست) *
-              <span className="text-slate-400 font-medium"> — تا وقتی دستی ویرایش نکنید، خودکار از روی عنوان ساخته می‌شود</span>
+              <span className="text-slate-400 font-medium"> — فقط انگلیسی؛ به‌صورت خودکار از روی عنوان ساخته نمی‌شود، خودتان وارد کنید</span>
             </label>
             <input
+              ref={slugInputRef}
               required dir="ltr" type="text" value={formData.slug}
-              onChange={e => { setSlugTouched(true); setFormData({...formData, slug: e.target.value}); }}
-              className="w-full bg-slate-50 border border-slate-200 rounded-xl px-4 py-2.5 text-sm font-bold focus:border-balkun-cyan outline-none text-left"
+              placeholder="my-post-title"
+              onChange={e => { setFormData({...formData, slug: e.target.value}); if (slugError) setSlugError(""); }}
+              className={`w-full bg-slate-50 border rounded-xl px-4 py-2.5 text-sm font-bold outline-none text-left ${slugError ? "border-red-400 focus:border-red-500" : "border-slate-200 focus:border-balkun-cyan"}`}
             />
+            {slugError && (
+              <div className="text-red-600 text-xs font-bold mt-1.5">{slugError}</div>
+            )}
+            {/* 🆕 نکته برای استفاده از هوش مصنوعی جهت تولید محتوا */}
+            <div className="flex items-start gap-2 mt-2 bg-blue-50 text-blue-700 border border-blue-200 rounded-xl px-3 py-2.5 text-xs font-bold leading-relaxed">
+              <Info className="w-4 h-4 shrink-0 mt-0.5" />
+              <span>
+                نکته: اگر برای نوشتن پست از هوش مصنوعی کمک می‌گیرید، حتماً در پرامپت
+                بنویسید که «اسلاگ (لینک) پست باید فقط به صورت انگلیسی و برگرفته از
+                عنوان باشد»؛ اسلاگ فارسی ذخیره نمی‌شود.
+              </span>
+            </div>
           </div>
           <div>
             <label className="text-xs font-bold text-slate-500 mb-1 block">خلاصه (نمایش در لیست پست‌ها) *</label>
@@ -231,7 +263,7 @@ export default function AdminBlogFormPage({ params }: { params: Promise<{ id: st
               </div>
             )}
 
-            {/* 🆕 تسک ۵: انتخاب بین «آپلود فایل» و «لینک تصویر» */}
+            {/* انتخاب بین «آپلود فایل» و «لینک تصویر» */}
             <div className="flex items-center gap-2 mb-3">
               <button
                 type="button"
@@ -287,7 +319,7 @@ export default function AdminBlogFormPage({ params }: { params: Promise<{ id: st
               <option value="DRAFT">پیش‌نویس (فقط در پنل قابل مشاهده)</option>
               <option value="PUBLISHED">منتشر شده (نمایش عمومی در سایت)</option>
             </select>
-            {/* 🆕 تسک ۵: تذکر واضح درباره‌ی رفتار پیش‌نویس، برای جلوگیری از گیج‌شدن با خطای ۴۰۴ */}
+            {/* تذکر واضح درباره‌ی رفتار پیش‌نویس، برای جلوگیری از گیج‌شدن با خطای ۴۰۴ */}
             {formData.status === "DRAFT" && (
               <div className="flex items-start gap-2 mt-2 bg-amber-50 text-amber-700 border border-amber-200 rounded-xl px-3 py-2.5 text-xs font-bold leading-relaxed">
                 <AlertTriangle className="w-4 h-4 shrink-0 mt-0.5" />
